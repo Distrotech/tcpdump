@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19.2.1 2001-10-01 04:02:28 mcr Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19.2.2 2001-10-15 16:54:11 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -61,6 +61,113 @@ static const char rcsid[] =
 #include "interface.h"
 #include "addrtoname.h"
 
+enum cipher { NONE,
+	      DESCBC,
+	      BLOWFISH,
+	      RC5,
+	      CAST128,
+	      DES3CBC};
+
+
+
+struct esp_algorithm {
+	char        *name;
+	enum  cipher algo;
+	int          ivlen;
+	int          authlen;
+	int          replaysize;
+};
+
+struct esp_algorithm esp_xforms[]={
+	{"none",                  NONE,    0,  0, 0},
+	{"des-cbc",               DESCBC,  8,  0, 0},
+	{"des-cbc-hmac96",        DESCBC,  8, 12, 4},
+	{"blowfish-cbc",          BLOWFISH,8,  0, 0},
+	{"blowfish-cbc-hmac96",   BLOWFISH,8, 12, 4},
+	{"rc5-cbc",               RC5,     8,  0, 0},
+	{"rc5-cbc-hmac96",        RC5,     8, 12, 4},
+	{"cast128-cbc",           CAST128, 8,  0, 0},
+	{"cast128-cbc-hmac96",    CAST128, 8, 12, 4},
+	{"3des-cbc-hmac96",       DES3CBC, 8, 12, 4},
+};
+
+static int hexdigit(char hex)
+{
+	if(hex >= '0' && hex <= '9') {
+		return (hex - '0');
+	} else if(hex >= 'A' && hex <= 'F') {
+		return (hex - 'A');
+	} else if(hex >= 'a' && hex <= 'f') {
+		return (hex - 'a');
+	} else {
+		printf("invalid hex digit %c in espsecret\n", hex);
+	}
+}
+
+static int hex2byte(char *hexstring)
+{
+	int byte;
+
+	byte = hexdigit(hexstring[0]) << 4 +
+		hexdigit(hexstring[1]);
+	return byte;
+}
+
+
+void esp_print_decodesecret(struct netdissect_options *ndo)
+{
+	char *colon;
+	int   len, i;
+	char  ciphername[32];
+	struct esp_algorithm *xf;
+
+	if(ndo->ndo_espsecret == NULL) {
+		/* set to NONE transform */
+		ndo->ndo_espsecret_xform = esp_xforms;
+		return;
+	}
+
+	if(ndo->ndo_espsecret_key != NULL) {
+		return;
+	}
+
+	colon = strchr(ndo->ndo_espsecret, ':');
+	if(colon == NULL) {
+		printf("failed to decode espsecret: %s\n",
+		       ndo->ndo_espsecret);
+		/* set to NONE transform */
+		ndo->ndo_espsecret_xform = esp_xforms;
+	}
+
+	len   = colon - ndo->ndo_espsecret;
+	xf = esp_xforms;
+	while(xf->name && strncasecmp(ndo->ndo_espsecret, xf->name, len)!=0) {
+		xf++;
+	}
+	if(xf->name == NULL) {
+		printf("failed to find cipher algo %s\n",
+		       ndo->ndo_espsecret);
+		ndo->ndo_espsecret_xform = esp_xforms;
+		return;
+	}
+	ndo->ndo_espsecret_xform = xf;
+
+	colon++;
+	if(colon[0]=='0' && colon[1]=='x') {
+		/* decode some hex! */
+		colon+=2;
+		len = strlen(colon) / 2;
+		ndo->ndo_espsecret_key = malloc(len);
+		i = 0;
+		while(colon[0] != '\0' && colon[1]!='\0') {
+			ndo->ndo_espsecret_key[i]=hex2byte(colon);
+			colon+=2;
+		}
+	} else {
+		ndo->ndo_espsecret_key = colon;
+	}
+}
+
 int
 esp_print(struct netdissect_options *ipdo,
 	  register const u_char *bp, register const u_char *bp2,
@@ -69,17 +176,19 @@ esp_print(struct netdissect_options *ipdo,
 	register const struct esp *esp;
 	register const u_char *ep;
 	u_int32_t spi;
-	enum { NONE, DESCBC, BLOWFISH, RC5, CAST128, DES3CBC } algo = NONE;
 	struct ip *ip = NULL;
 #ifdef INET6
 	struct ip6_hdr *ip6 = NULL;
 #endif
+	enum cipher algo = NONE;
 	int advance;
 	int len;
+	int authlen;
+	int replaysize = 0;
 	char *secret = NULL;
 	int ivlen = 0;
 	u_char *ivoff;
-
+	
 	esp = (struct esp *)bp;
 	spi = (u_int32_t)ntohl(esp->esp_spi);
 
@@ -95,43 +204,14 @@ esp_print(struct netdissect_options *ipdo,
 	printf(")");
 
 	/* if we don't have decryption key, we can't decrypt this packet. */
-	if (!espsecret)
+	if (!ndo->ndo_espsecret)
 		goto fail;
 
-	if (strncmp(espsecret, "des-cbc:", 8) == 0
-	 && strlen(espsecret + 8) == 8) {
-		algo = DESCBC;
-		ivlen = 8;
-		secret = espsecret + 8;
-	} else if (strncmp(espsecret, "blowfish-cbc:", 13) == 0) {
-		algo = BLOWFISH;
-		ivlen = 8;
-		secret = espsecret + 13;
-	} else if (strncmp(espsecret, "rc5-cbc:", 8) == 0) {
-		algo = RC5;
-		ivlen = 8;
-		secret = espsecret + 8;
-	} else if (strncmp(espsecret, "cast128-cbc:", 12) == 0) {
-		algo = CAST128;
-		ivlen = 8;
-		secret = espsecret + 12;
-	} else if (strncmp(espsecret, "3des-cbc:", 9) == 0
-		&& strlen(espsecret + 9) == 24) {
-		algo = DES3CBC;
-		ivlen = 8;
-		secret = espsecret + 9;
-	} else if (strncmp(espsecret, "none:", 5) == 0) {
-		algo = NONE;
-		ivlen = 0;
-		secret = espsecret + 5;
-	} else if (strlen(espsecret) == 8) {
-		algo = DESCBC;
-		ivlen = 8;
-		secret = espsecret;
-	} else {
-		algo = NONE;
-		ivlen = 0;
-		secret = espsecret;
+	if(!ndo->ndo_espsecret_xform) {
+		esp_print_decodesecret(ndo);
+	}
+	if(ndo->ndo_espsecret_xform->algo == NONE) {
+		goto fail;
 	}
 
 	ip = (struct ip *)bp2;
@@ -164,12 +244,11 @@ esp_print(struct netdissect_options *ipdo,
 	if (ep - bp2 < len)
 		goto fail;
 
-	if (Rflag)
-		ivoff = (u_char *)(esp + 1) + sizeof(u_int32_t);
-	else
-		ivoff = (u_char *)(esp + 1);
+	ivoff = (u_char *)(esp + 1) + ndo->ndo_espsecret_xform->replaysize;
+	ivlen = ndo->ndo_espsecret_xform->ivlen;
+	secret = ndo->ndo_espsecret_key;
 
-	switch (algo) {
+	switch (ndo->ndo_espsecret_xform->algo) {
 	case DESCBC:
 #ifdef HAVE_LIBCRYPTO
 	    {
@@ -269,14 +348,22 @@ esp_print(struct netdissect_options *ipdo,
 		des_key_schedule s1, s2, s3;
 		u_char *p;
 
-		des_check_key = 0;
-		des_set_key((void *)secret, s1);
-		des_set_key((void *)(secret + 8), s2);
-		des_set_key((void *)(secret + 16), s3);
+		des_check_key = 1;
+		if(des_set_key((void *)secret, s1) != 0) {
+		  printf("failed to schedule key 1\n");
+		}
+		if(des_set_key((void *)(secret + 8), s2)!=0) {
+		  printf("failed to schedule key 2\n");
+		}
+		if(des_set_key((void *)(secret + 16), s3)!=0) {
+		  printf("failed to schedule key 3\n");
+		}
 
 		p = ivoff + ivlen;
 		des_ede3_cbc_encrypt((void *)p, (void *)p,
-			(long)(ep - p), s1, s2, s3, (void *)ivoff, DES_DECRYPT);
+				     (long)(ep - p),
+				     s1, s2, s3,
+				     (void *)ivoff, DES_DECRYPT);
 		advance = ivoff - (u_char *)esp + ivlen;
 		break;
 	    }
@@ -286,13 +373,11 @@ esp_print(struct netdissect_options *ipdo,
 
 	case NONE:
 	default:
-		if (Rflag)
-			advance = sizeof(struct esp) + sizeof(u_int32_t);
-		else
-			advance = sizeof(struct esp);
+		advance = sizeof(struct esp) + ndo->ndo_espsecret_xform->replaysize;
 		break;
 	}
 
+	ep = ep - ndo->ndo_espsecret_xform->authlen;
 	/* sanity check for pad length */
 	if (ep - bp < *(ep - 2))
 		goto fail;

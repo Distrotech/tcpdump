@@ -18,7 +18,7 @@
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
- * @(#) $Header: /tcpdump/master/tcpdump/netdissect.h,v 1.1.2.1 2001-10-01 04:02:18 mcr Exp $ (LBL)
+ * @(#) $Header: /tcpdump/master/tcpdump/netdissect.h,v 1.1.2.2 2001-10-15 16:54:10 mcr Exp $ (LBL)
  */
 
 #ifndef netdissect_h
@@ -82,6 +82,10 @@ struct netdissect_options {
   int ndo_Xflag;		/* print packet in hex/ascii */
 
   char *ndo_espsecret;
+
+  struct esp_algorithm *ndo_espsecret_xform;   /* cache of decoded  */
+  char                 *ndo_espsecret_key;
+
   int   ndo_packettype;	/* as specified by -T */
 
   char *ndo_program_name;	/*used to generate self-identifying messages */

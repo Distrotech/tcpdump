@@ -24,7 +24,7 @@ static const char copyright[] =
     "@(#) Copyright (c) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 2000\n\
 The Regents of the University of California.  All rights reserved.\n";
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/tcpdump.c,v 1.167.2.1 2001-10-01 04:03:00 mcr Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/tcpdump.c,v 1.167.2.2 2001-10-15 16:54:12 mcr Exp $ (LBL)";
 #endif
 
 /*
@@ -168,6 +168,8 @@ main(int argc, char **argv)
 	char ebuf[PCAP_ERRBUF_SIZE];
 
 	gipdo.ndo_snaplen = DEFAULT_SNAPLEN;
+	gipdo.ndo_Rflag = 1;    /* print sequence # field in AH/ESP*/
+	gipdo.ndo_tflag = 1; 	/* print packet arrival time */
 
 	cnt = -1;
 	device = NULL;
