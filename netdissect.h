@@ -18,7 +18,7 @@
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
- * @(#) $Header: /tcpdump/master/tcpdump/netdissect.h,v 1.1.2.2 2001-10-15 16:54:10 mcr Exp $ (LBL)
+ * @(#) $Header: /tcpdump/master/tcpdump/netdissect.h,v 1.1.2.3 2001-10-23 00:44:28 mcr Exp $ (LBL)
  */
 
 #ifndef netdissect_h
@@ -322,6 +322,7 @@ extern int ah_print(struct netdissect_options *,register const u_char *,
 extern int esp_print(struct netdissect_options *,
 		     register const u_char *bp, register const u_char *bp2,
 		     int *nhdr, int *padlen);
+extern void esp_print_decodesecret(struct netdissect_options *ndo);
 extern void isakmp_print(struct netdissect_options *,const u_char *,
 			 u_int, const u_char *);
 extern int ipcomp_print(struct netdissect_options *,register const u_char *,
