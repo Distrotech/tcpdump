@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ip.c,v 1.100 2001-09-17 21:58:03 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ip.c,v 1.100.2.1 2001-10-01 04:02:33 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <string.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "addrtoname.h"
 #include "interface.h"
 #include "extract.h"			/* must come after interface.h */
@@ -54,7 +55,8 @@ static const char rcsid[] =
  * print the recorded route in an IP RR, LSRR or SSRR option.
  */
 static void
-ip_printroute(const char *type, register const u_char *cp, u_int length)
+ip_printroute(struct netdissect_options *ipdo,
+	      const char *type, register const u_char *cp, u_int length)
 {
 	register u_int ptr = cp[2] - 1;
 	register u_int len;
@@ -76,7 +78,8 @@ ip_printroute(const char *type, register const u_char *cp, u_int length)
 }
 
 static void
-ip_printts(register const u_char *cp, u_int length)
+ip_printts(struct netdissect_options *ipdo,
+	   register const u_char *cp, u_int length)
 {
 	register u_int ptr = cp[2] - 1;
 	register u_int len = 0;
@@ -135,7 +138,8 @@ done:
  * print IP options.
  */
 static void
-ip_optprint(register const u_char *cp, u_int length)
+ip_optprint(struct netdissect_options *ipdo,
+	    register const u_char *cp, u_int length)
 {
 	register u_int len;
 
@@ -172,7 +176,7 @@ ip_optprint(register const u_char *cp, u_int length)
 			break;
 
 		case IPOPT_TS:
-			ip_printts(cp, len);
+			ip_printts(ipdo, cp, len);
 			break;
 
 #ifndef IPOPT_SECURITY
@@ -183,15 +187,15 @@ ip_optprint(register const u_char *cp, u_int length)
 			break;
 
 		case IPOPT_RR:
-			ip_printroute("RR", cp, len);
+			ip_printroute(ipdo, "RR", cp, len);
 			break;
 
 		case IPOPT_SSRR:
-			ip_printroute("SSRR", cp, len);
+			ip_printroute(ipdo, "SSRR", cp, len);
 			break;
 
 		case IPOPT_LSRR:
-			ip_printroute("LSRR", cp, len);
+			ip_printroute(ipdo, "LSRR", cp, len);
 			break;
 
 #ifndef IPOPT_RA
@@ -250,7 +254,8 @@ in_cksum(const u_short *addr, register u_int len, int csum)
  * print an IP datagram.
  */
 void
-ip_print(register const u_char *bp, register u_int length)
+ip_print(struct netdissect_options *ipdo,
+	 register const u_char *bp, register u_int length)
 {
 	register const struct ip *ip;
 	register u_int hlen, len, len0, off;
@@ -331,7 +336,7 @@ again:
 #endif
 		case IPPROTO_AH:
 			nh = *cp;
-			advance = ah_print(cp, (const u_char *)ip);
+			advance = ah_print(ipdo, cp, (const u_char *)ip);
 			cp += advance;
 			len -= advance;
 			goto again;
@@ -342,7 +347,7 @@ again:
 		case IPPROTO_ESP:
 		    {
 			int enh, padlen;
-			advance = esp_print(cp, (const u_char *)ip, &enh, &padlen);
+			advance = esp_print(ipdo, cp, (const u_char *)ip, &enh, &padlen);
 			cp += advance;
 			len -= advance + padlen;
 			if (enh < 0)
@@ -357,7 +362,8 @@ again:
 		case IPPROTO_IPCOMP:
 		    {
 			int enh;
-			advance = ipcomp_print(cp, (const u_char *)ip, &enh);
+			advance = ipcomp_print(ipdo, cp,
+					       (const u_char *)ip, &enh);
 			cp += advance;
 			len -= advance;
 			if (enh < 0)
@@ -367,26 +373,26 @@ again:
 		    }
 
 		case IPPROTO_SCTP:
-  			sctp_print(cp, (const u_char *)ip, len);
+  			sctp_print(ndo, cp, (const u_char *)ip, len);
 			break;
 
 		case IPPROTO_TCP:
-			tcp_print(cp, len, (const u_char *)ip, (off &~ 0x6000));
+			tcp_print(ipdo,cp, len, (const u_char *)ip, (off &~ 0x6000));
 			break;
 
 		case IPPROTO_UDP:
-			udp_print(cp, len, (const u_char *)ip, (off &~ 0x6000));
+			udp_print(ipdo, cp, len, (const u_char *)ip, (off &~ 0x6000));
 			break;
 
 		case IPPROTO_ICMP:
-			icmp_print(cp, len, (const u_char *)ip);
+			icmp_print(ipdo, cp, len, (const u_char *)ip);
 			break;
 
 #ifndef IPPROTO_IGRP
 #define IPPROTO_IGRP 9
 #endif
 		case IPPROTO_IGRP:
-			igrp_print(cp, len, (const u_char *)ip);
+			igrp_print(ipdo, cp, len, (const u_char *)ip);
 			break;
 
 		case IPPROTO_ND:
@@ -394,26 +400,26 @@ again:
 			break;
 
 		case IPPROTO_EGP:
-			egp_print(cp, len, (const u_char *)ip);
+			egp_print(ipdo, cp, len, (const u_char *)ip);
 			break;
 
 #ifndef IPPROTO_OSPF
 #define IPPROTO_OSPF 89
 #endif
 		case IPPROTO_OSPF:
-			ospf_print(cp, len, (const u_char *)ip);
+			ospf_print(ipdo, cp, len, (const u_char *)ip);
 			break;
 
 #ifndef IPPROTO_IGMP
 #define IPPROTO_IGMP 2
 #endif
 		case IPPROTO_IGMP:
-			igmp_print(cp, len);
+			igmp_print(ipdo, cp, len);
 			break;
 
 		case 4:
 			/* DVMRP multicast tunnel (ip-in-ip encapsulation) */
-			ip_print(cp, len);
+			ip_print(ipdo, cp, len);
 			if (! vflag) {
 				printf(" (ipip-proto-4)");
 				return;
@@ -426,7 +432,7 @@ again:
 #endif
 		case IP6PROTO_ENCAP:
 			/* ip6-in-ip encapsulation */
-			ip6_print(cp, len);
+			ip6_print(ndo, cp, len);
 			break;
 #endif /*INET6*/
 
@@ -436,28 +442,28 @@ again:
 #endif
 		case IPPROTO_GRE:
 			/* do it */
-			gre_print(cp, len);
+			gre_print(ipdo, cp, len);
 			break;
 
 #ifndef IPPROTO_MOBILE
 #define IPPROTO_MOBILE 55
 #endif
 		case IPPROTO_MOBILE:
-			mobile_print(cp, len);
+			mobile_print(ipdo, cp, len);
 			break;
 
 #ifndef IPPROTO_PIM
 #define IPPROTO_PIM	103
 #endif
 		case IPPROTO_PIM:
-			pim_print(cp, len);
+			pim_print(ipdo, cp, len);
 			break;
 
 #ifndef IPPROTO_VRRP
 #define IPPROTO_VRRP	112
 #endif
 		case IPPROTO_VRRP:
-			vrrp_print(cp, len, ip->ip_ttl);
+			vrrp_print(ipdo, cp, len, ip->ip_ttl);
 			break;
 
 		default:
@@ -544,14 +550,15 @@ again:
 		}
 		if ((hlen -= sizeof(struct ip)) > 0) {
 			(void)printf("%soptlen=%d", sep, hlen);
-			ip_optprint((u_char *)(ip + 1), hlen);
+			ip_optprint(ipdo, (u_char *)(ip + 1), hlen);
 		}
 		printf(")");
 	}
 }
 
 void
-ipN_print(register const u_char *bp, register u_int length)
+ipN_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register u_int length)
 {
 	struct ip *ip, hdr;
 
@@ -563,11 +570,11 @@ ipN_print(register const u_char *bp, register u_int length)
 	memcpy (&hdr, (char *)ip, 4);
 	switch (IP_V(&hdr)) {
 	case 4:
-		ip_print (bp, length);
+		ip_print (ipdo, bp, length);
 		return;
 #ifdef INET6
 	case 6:
-		ip6_print (bp, length);
+		ip6_print (ipdo, bp, length);
 		return;
 #endif
 	default:

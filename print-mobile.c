@@ -42,7 +42,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/print-mobile.c,v 1.7 2001-08-20 17:53:54 fenner Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-mobile.c,v 1.7.2.1 2001-10-01 04:02:40 mcr Exp $";
 #endif
 
 #include <sys/param.h>
@@ -55,6 +55,7 @@ static const char rcsid[] =
 #include <netdb.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"		/* must come after interface.h */
@@ -74,7 +75,8 @@ struct mobile_ip {
  * Deencapsulate and print a mobile-tunneled IP datagram
  */
 void
-mobile_print(const u_char *bp, u_int length)
+mobile_print(struct netdissect_options *ipdo,
+	     const u_char *bp, u_int length)
 {
 	const u_char *cp = bp +8 ;
 	const struct mobile_ip *mob;

@@ -11,7 +11,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-  "@(#) $Header: /tcpdump/master/tcpdump/Attic/print-bxxp.c,v 1.5 2001-09-17 21:57:56 fenner Exp $";
+  "@(#) $Header: /tcpdump/master/tcpdump/Attic/print-bxxp.c,v 1.5.2.1 2001-10-01 04:02:23 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -29,6 +29,7 @@ static const char rcsid[] =
 #include <string.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "extract.h"
 
@@ -51,7 +52,8 @@ l_strnstart(const char *tstr1, u_int tl1, const char *str2, u_int l2)
 }
 
 void
-bxxp_print(const u_char *bp, u_int length)
+bxxp_print(struct netdissect_options *ipdo,
+	   const u_char *bp, u_int length)
 {
 
 	if (l_strnstart("REQ ", 4, bp, length)) /* A REQuest */

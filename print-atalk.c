@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-atalk.c,v 1.69 2001-09-17 21:57:55 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-atalk.c,v 1.69.2.1 2001-10-01 04:02:22 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <netdb.h>		/* for MAXHOSTNAMELEN on some platforms */
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -70,29 +71,33 @@ struct aarp {
 
 static char tstr[] = "[|atalk]";
 
-static void atp_print(const struct atATP *, u_int);
+static void atp_print(struct netdissect_options *, const struct atATP *, u_int);
 static void atp_bitmap_print(u_char);
-static void nbp_print(const struct atNBP *, u_int, u_short, u_char, u_char);
+static void nbp_print(struct netdissect_options *, const struct atNBP *,
+		      u_int, u_short, u_char, u_char);
 static const char *print_cstring(const char *, const u_char *);
-static const struct atNBPtuple *nbp_tuple_print(const struct atNBPtuple *,
+static const struct atNBPtuple *nbp_tuple_print(struct netdissect_options *ipdo,
+						const struct atNBPtuple *,
 						const u_char *,
 						u_short, u_char, u_char);
 static const struct atNBPtuple *nbp_name_print(const struct atNBPtuple *,
 					       const u_char *);
-static const char *ataddr_string(u_short, u_char);
-static void ddp_print(const u_char *, u_int, int, u_short, u_char, u_char);
-static const char *ddpskt_string(int);
+static const char *ataddr_string(struct netdissect_options *,u_short, u_char);
+static void ddp_print(struct netdissect_options *,
+		      const u_char *, u_int, int, u_short, u_char, u_char);
+static const char *ddpskt_string(struct netdissect_options *,int);
 
 /*
  * Print LLAP packets received on a physical LocalTalk interface.
  */
 void
-ltalk_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
+ltalk_if_print(struct netdissect_options *ndo,
+	       u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 {
 	snapend = p + h->caplen;
 	++infodelay;
-	ts_print(&h->ts);
-	llap_print(p, h->caplen);
+	ts_print(ndo, &h->ts);
+	llap_print(ndo, p, h->caplen);
 	if(xflag)
 		default_print(p, h->caplen);
 	putchar('\n');
@@ -105,7 +110,8 @@ ltalk_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
  * Print AppleTalk LLAP packets.
  */
 void
-llap_print(register const u_char *bp, u_int length)
+llap_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, u_int length)
 {
 	register const struct LAP *lp;
 	register const struct atDDP *dp;
@@ -124,12 +130,15 @@ llap_print(register const u_char *bp, u_int length)
 		}
 		sdp = (const struct atShortDDP *)bp;
 		printf("%s.%s",
-		    ataddr_string(0, lp->src), ddpskt_string(sdp->srcSkt));
+		       ataddr_string(ipdo, 0, lp->src),
+		       ddpskt_string(ipdo, sdp->srcSkt));
 		printf(" > %s.%s:",
-		    ataddr_string(0, lp->dst), ddpskt_string(sdp->dstSkt));
+		       ataddr_string(ipdo, 0, lp->dst),
+		       ddpskt_string(ipdo, sdp->dstSkt));
 		bp += ddpSSize;
 		length -= ddpSSize;
-		ddp_print(bp, length, sdp->type, 0, lp->src, sdp->srcSkt);
+		ddp_print(ipdo, bp, length, sdp->type, 0,
+			  lp->src, sdp->srcSkt);
 		break;
 
 	case lapDDP:
@@ -139,14 +148,15 @@ llap_print(register const u_char *bp, u_int length)
 		}
 		dp = (const struct atDDP *)bp;
 		snet = EXTRACT_16BITS(&dp->srcNet);
-		printf("%s.%s", ataddr_string(snet, dp->srcNode),
-		    ddpskt_string(dp->srcSkt));
+		printf("%s.%s", ataddr_string(ipdo, snet, dp->srcNode),
+		       ddpskt_string(ipdo, dp->srcSkt));
 		printf(" > %s.%s:",
-		    ataddr_string(EXTRACT_16BITS(&dp->dstNet), dp->dstNode),
-		    ddpskt_string(dp->dstSkt));
+		       ataddr_string(ipdo, EXTRACT_16BITS(&dp->dstNet), dp->dstNode),
+		       ddpskt_string(ipdo, dp->dstSkt));
 		bp += ddpSize;
 		length -= ddpSize;
-		ddp_print(bp, length, dp->type, snet, dp->srcNode, dp->srcSkt);
+		ddp_print(ipdo, bp, length, dp->type, snet,
+			  dp->srcNode, dp->srcSkt);
 		break;
 
 #ifdef notdef
@@ -168,7 +178,8 @@ llap_print(register const u_char *bp, u_int length)
  * packets in them).
  */
 void
-atalk_print(register const u_char *bp, u_int length)
+atalk_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, u_int length)
 {
 	register const struct atDDP *dp;
 	u_short snet;
@@ -179,11 +190,12 @@ atalk_print(register const u_char *bp, u_int length)
 	}
 	dp = (const struct atDDP *)bp;
 	snet = EXTRACT_16BITS(&dp->srcNet);
-	printf("%s.%s", ataddr_string(snet, dp->srcNode),
-	       ddpskt_string(dp->srcSkt));
+	printf("%s.%s",
+	       ataddr_string(ipdo, snet, dp->srcNode),
+	       ddpskt_string(ipdo, dp->srcSkt));
 	printf(" > %s.%s:",
-	       ataddr_string(EXTRACT_16BITS(&dp->dstNet), dp->dstNode),
-	       ddpskt_string(dp->dstSkt));
+	       ataddr_string(ipdo,EXTRACT_16BITS(&dp->dstNet), dp->dstNode),
+	       ddpskt_string(ipdo,dp->dstSkt));
 	bp += ddpSize;
 	length -= ddpSize;
 #ifdef LBL_ALIGN
@@ -201,16 +213,17 @@ atalk_print(register const u_char *bp, u_int length)
 		bp = abuf;
 	}
 #endif
-	ddp_print(bp, length, dp->type, snet, dp->srcNode, dp->srcSkt);
+	ddp_print(ipdo,bp,length, dp->type, snet, dp->srcNode, dp->srcSkt);
 }
 
 /* XXX should probably pass in the snap header and do checks like arp_print() */
 void
-aarp_print(register const u_char *bp, u_int length)
+aarp_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, u_int length)
 {
 	register const struct aarp *ap;
 
-#define AT(member) ataddr_string((ap->member[1]<<8)|ap->member[2],ap->member[3])
+#define AT(member) ataddr_string(ipdo, (ap->member[1]<<8)|ap->member[2],ap->member[3])
 
 	printf("aarp ");
 	ap = (const struct aarp *)bp;
@@ -225,7 +238,7 @@ aarp_print(register const u_char *bp, u_int length)
 
 		case 2:				/* response */
 			(void)printf("reply %s is-at %s",
-			    AT(pdaddr), etheraddr_string(ap->hdaddr));
+			    AT(pdaddr), etheraddr_string(ipdo,ap->hdaddr));
 			return;
 
 		case 3:				/* probe (oy!) */
@@ -242,18 +255,20 @@ aarp_print(register const u_char *bp, u_int length)
  * Print AppleTalk Datagram Delivery Protocol packets.
  */
 static void
-ddp_print(register const u_char *bp, register u_int length, register int t,
+ddp_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register u_int length, register int t,
 	  register u_short snet, register u_char snode, u_char skt)
 {
 
 	switch (t) {
 
 	case ddpNBP:
-		nbp_print((const struct atNBP *)bp, length, snet, snode, skt);
+		nbp_print(ipdo, (const struct atNBP *)bp, length,
+			  snet, snode, skt);
 		break;
 
 	case ddpATP:
-		atp_print((const struct atATP *)bp, length);
+		atp_print(ipdo, (const struct atATP *)bp, length);
 		break;
 
 	default:
@@ -263,7 +278,8 @@ ddp_print(register const u_char *bp, register u_int length, register int t,
 }
 
 static void
-atp_print(register const struct atATP *ap, u_int length)
+atp_print(struct netdissect_options *ipdo,
+	  register const struct atATP *ap, u_int length)
 {
 	char c;
 	u_int32_t data;
@@ -386,7 +402,8 @@ atp_bitmap_print(register u_char bm)
 }
 
 static void
-nbp_print(register const struct atNBP *np, u_int length, register u_short snet,
+nbp_print(struct netdissect_options *ipdo,
+	  register const struct atNBP *np, u_int length, register u_short snet,
 	  register u_char snode, register u_char skt)
 {
 	register const struct atNBPtuple *tp =
@@ -429,7 +446,7 @@ nbp_print(register const struct atNBP *np, u_int length, register u_short snet,
 		if (EXTRACT_16BITS(&tp->net) != snet ||
 		    tp->node != snode || tp->skt != skt)
 			(void)printf(" [addr=%s.%d]",
-			    ataddr_string(EXTRACT_16BITS(&tp->net),
+			    ataddr_string(ipdo, EXTRACT_16BITS(&tp->net),
 			    tp->node), tp->skt);
 		break;
 
@@ -438,7 +455,7 @@ nbp_print(register const struct atNBP *np, u_int length, register u_short snet,
 
 		/* print each of the tuples in the reply */
 		for (i = np->control & 0xf; --i >= 0 && tp; )
-			tp = nbp_tuple_print(tp, ep, snet, snode, skt);
+			tp = nbp_tuple_print(ipdo, tp, ep, snet, snode, skt);
 		break;
 
 	default:
@@ -476,7 +493,8 @@ print_cstring(register const char *cp, register const u_char *ep)
 }
 
 static const struct atNBPtuple *
-nbp_tuple_print(register const struct atNBPtuple *tp,
+nbp_tuple_print(struct netdissect_options *ipdo,
+		register const struct atNBPtuple *tp,
 		register const u_char *ep,
 		register u_short snet, register u_char snode,
 		register u_char skt)
@@ -500,7 +518,7 @@ nbp_tuple_print(register const struct atNBPtuple *tp,
 	/* if the address doesn't match the src address, it's an anomaly */
 	if (EXTRACT_16BITS(&tp->net) != snet || tp->node != snode)
 		(void)printf(" [addr=%s]",
-		    ataddr_string(EXTRACT_16BITS(&tp->net), tp->node));
+		    ataddr_string(ipdo, EXTRACT_16BITS(&tp->net), tp->node));
 
 	return (tpn);
 }
@@ -539,7 +557,8 @@ struct hnamemem {
 static struct hnamemem hnametable[HASHNAMESIZE];
 
 static const char *
-ataddr_string(u_short atnet, u_char athost)
+ataddr_string(struct netdissect_options *ipdo,
+	      u_short atnet, u_char athost)
 {
 	register struct hnamemem *tp, *tp2;
 	register int i = (atnet << 8) | athost;
@@ -574,7 +593,7 @@ ataddr_string(u_short atnet, u_char athost)
 			     tp->nxt; tp = tp->nxt)
 				;
 			tp->addr = i3;
-			tp->nxt = newhnamemem();
+			tp->nxt = newhnamemem(ipdo);
 			tp->name = strdup(nambuf);
 		}
 		fclose(fp);
@@ -589,7 +608,7 @@ ataddr_string(u_short atnet, u_char athost)
 	for (tp2 = &hnametable[i & (HASHNAMESIZE-1)]; tp2->nxt; tp2 = tp2->nxt)
 		if (tp2->addr == i) {
 			tp->addr = (atnet << 8) | athost;
-			tp->nxt = newhnamemem();
+			tp->nxt = newhnamemem(ipdo);
 			(void)snprintf(nambuf, sizeof(nambuf), "%s.%d",
 			    tp2->name, athost);
 			tp->name = strdup(nambuf);
@@ -597,7 +616,7 @@ ataddr_string(u_short atnet, u_char athost)
 		}
 
 	tp->addr = (atnet << 8) | athost;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 	if (athost != 255)
 		(void)snprintf(nambuf, sizeof(nambuf), "%d.%d.%d",
 		    atnet >> 8, atnet & 0xff, athost);
@@ -618,7 +637,7 @@ static struct tok skt2str[] = {
 };
 
 static const char *
-ddpskt_string(register int skt)
+ddpskt_string(struct netdissect_options *ipdo, register int skt)
 {
 	static char buf[8];
 

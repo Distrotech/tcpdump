@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/util.c,v 1.71 2001-09-17 21:05:43 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/util.c,v 1.71.2.1 2001-10-01 04:03:00 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -48,6 +48,7 @@ static const char rcsid[] =
 #endif
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 
 /*
@@ -119,7 +120,8 @@ fn_printn(register const u_char *s, register u_int n,
  * Print the timestamp
  */
 void
-ts_print(register const struct timeval *tvp)
+ts_print(struct netdissect_options *ipdo,
+	 register const struct timeval *tvp)
 {
 	register int s;
 	struct tm *tm;
@@ -224,7 +226,8 @@ tok2str(register const struct tok *lp, register const char *fmt,
 
 /* VARARGS */
 void
-error(const char *fmt, ...)
+error(struct netdissect_options *ipdo,
+      const char *fmt, ...)
 {
 	va_list ap;
 
@@ -243,7 +246,8 @@ error(const char *fmt, ...)
 
 /* VARARGS */
 void
-warning(const char *fmt, ...)
+warning(struct netdissect_options *ipdo,
+	const char *fmt, ...)
 {
 	va_list ap;
 
@@ -262,7 +266,8 @@ warning(const char *fmt, ...)
  * Copy arg vector into a new buffer, concatenating arguments with spaces.
  */
 char *
-copy_argv(register char **argv)
+copy_argv(struct netdissect_options *ipdo,
+	  register char **argv)
 {
 	register char **p;
 	register u_int len = 0;
@@ -278,7 +283,7 @@ copy_argv(register char **argv)
 
 	buf = (char *)malloc(len);
 	if (buf == NULL)
-		error("copy_argv: malloc");
+		error(ipdo,"copy_argv: malloc");
 
 	p = argv;
 	dst = buf;
@@ -293,7 +298,8 @@ copy_argv(register char **argv)
 }
 
 char *
-read_infile(char *fname)
+read_infile(struct netdissect_options *ipdo,
+	    char *fname)
 {
 	register int fd, cc;
 	register char *cp;
@@ -301,20 +307,20 @@ read_infile(char *fname)
 
 	fd = open(fname, O_RDONLY);
 	if (fd < 0)
-		error("can't open %s: %s", fname, pcap_strerror(errno));
+		error(ipdo,"can't open %s: %s", fname, pcap_strerror(errno));
 
 	if (fstat(fd, &buf) < 0)
-		error("can't stat %s: %s", fname, pcap_strerror(errno));
+		error(ipdo,"can't stat %s: %s", fname, pcap_strerror(errno));
 
 	cp = malloc((u_int)buf.st_size + 1);
 	if (cp == NULL)
-		error("malloc(%d) for %s: %s", (u_int)buf.st_size + 1,
+		error(ndo, "malloc(%d) for %s: %s", (u_int)buf.st_size + 1,
 			fname, pcap_strerror(errno));
 	cc = read(fd, cp, (u_int)buf.st_size);
 	if (cc < 0)
-		error("read %s: %s", fname, pcap_strerror(errno));
+		error(ipdo,"read %s: %s", fname, pcap_strerror(errno));
 	if (cc != buf.st_size)
-		error("short read %s (%d != %d)", fname, cc, (int)buf.st_size);
+		error(ipdo,"short read %s (%d != %d)", fname, cc, (int)buf.st_size);
 	cp[(int)buf.st_size] = '\0';
 
 	return (cp);

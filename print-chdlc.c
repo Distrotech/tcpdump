@@ -22,7 +22,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-chdlc.c,v 1.13 2001-09-17 21:57:57 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-chdlc.c,v 1.13.2.1 2001-10-01 04:02:24 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <pcap.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -46,7 +47,8 @@ static const char rcsid[] =
 #include "ppp.h"
 #include "chdlc.h"
 
-static void chdlc_slarp_print(const u_char *, u_int);
+static void chdlc_slarp_print(struct netdissect_options *,
+			      const u_char *, u_int);
 
 /* Standard CHDLC printer */
 void
@@ -55,9 +57,10 @@ chdlc_if_print(u_char *user, const struct pcap_pkthdr *h,
 {
 	register u_int length = h->len;
 	register u_int caplen = h->caplen;
+	struct netdissect_options *ndo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	/*
 	 * Some printers want to get back at the link level addresses,
@@ -67,7 +70,7 @@ chdlc_if_print(u_char *user, const struct pcap_pkthdr *h,
 	packetp = p;
 	snapend = p + caplen;
 
-	chdlc_print(p, length, caplen);
+	chdlc_print(ndo, p, length, caplen);
 
 	putchar('\n');
 	--infodelay;
@@ -76,7 +79,8 @@ chdlc_if_print(u_char *user, const struct pcap_pkthdr *h,
 }
 
 void
-chdlc_print(register const u_char *p, u_int length, u_int caplen)
+chdlc_print(struct netdissect_options *ndo,
+	    register const u_char *p, u_int length, u_int caplen)
 {
 	const struct ip *ip;
 	u_int proto;
@@ -106,19 +110,19 @@ chdlc_print(register const u_char *p, u_int length, u_int caplen)
 	ip = (const struct ip *)(p + CHDLC_HDRLEN);
 	switch (proto) {
 	case ETHERTYPE_IP:
-		ip_print((const u_char *)ip, length);
+		ip_print(ipdo, (const u_char *)ip, length);
 		break;
 #ifdef INET6
 	case ETHERTYPE_IPV6:
-		ip6_print((const u_char *)ip, length);
+		ip6_print(ipdo, (const u_char *)ip, length);
 		break;
 #endif
 	case CHDLC_TYPE_SLARP:
-		chdlc_slarp_print((const u_char *)ip, length);
+		chdlc_slarp_print(ipdo, (const u_char *)ip, length);
 		break;
 #if 0
 	case CHDLC_TYPE_CDP:
-		chdlc_cdp_print((const u_char *)ip, length);
+		chdlc_cdp_print(ipdo, (const u_char *)ip, length);
 		break;
 #endif
 	}
@@ -150,7 +154,8 @@ struct cisco_slarp {
 #define SLARP_LEN	18
 
 static void
-chdlc_slarp_print(const u_char *cp, u_int length)
+chdlc_slarp_print(struct netdissect_options *ipdo,
+		  const u_char *cp, u_int length)
 {
 	const struct cisco_slarp *slarp;
 

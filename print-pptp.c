@@ -24,7 +24,7 @@
 
 #ifndef lint
 static const char rcsid[] = 
-     "@(#) $Header: /tcpdump/master/tcpdump/print-pptp.c,v 1.2 2001-03-17 04:41:50 itojun Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-pptp.c,v 1.2.2.1 2001-10-01 04:02:46 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -37,6 +37,7 @@ static const char rcsid[] =
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 
 static char tstr[] = " [|pptp]";
@@ -343,7 +344,7 @@ pptp_conn_speed_print(const u_int32_t *conn_speed)
 }
 
 static void
-pptp_err_code_print(const u_int8_t *err_code)
+pptp_err_code_print(struct netdissect_options *ipdo, const u_int8_t *err_code)
 {
 	printf(" ERR_CODE(%u", *err_code);
 	if (vflag) {
@@ -467,7 +468,8 @@ pptp_recv_winsiz_print(const u_int16_t *recv_winsiz)
 }
 
 static void
-pptp_result_code_print(const u_int8_t *result_code, int ctrl_msg_type)
+pptp_result_code_print(struct netdissect_options *ipdo,
+		       const u_int8_t *result_code, int ctrl_msg_type)
 {
 	printf(" RESULT_CODE(%u", *result_code);
 	if (vflag) {
@@ -594,7 +596,8 @@ pptp_vendor_print(const u_char *vendor)
 /* PPTP message print out functions */
 /************************************/
 static void
-pptp_sccrq_print(const u_char *dat)
+pptp_sccrq_print(struct netdissect_options *ipdo,
+		 const u_char *dat)
 {
 	struct pptp_msg_sccrq *ptr = (struct pptp_msg_sccrq *)dat;
 
@@ -621,16 +624,17 @@ trunc:
 }
 
 static void
-pptp_sccrp_print(const u_char *dat)
+pptp_sccrp_print(struct netdissect_options *ipdo,
+		 const u_char *dat)
 {
 	struct pptp_msg_sccrp *ptr = (struct pptp_msg_sccrp *)dat;
 
 	TCHECK(ptr->proto_ver);
 	pptp_proto_ver_print(&ptr->proto_ver);
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_SCCRP);
+	pptp_result_code_print(ipdo,&ptr->result_code, PPTP_CTRL_MSG_TYPE_SCCRP);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo,&ptr->err_code);
 	TCHECK(ptr->framing_cap);
 	pptp_framing_cap_print(&ptr->framing_cap);
 	TCHECK(ptr->bearer_cap);
@@ -651,7 +655,8 @@ trunc:
 }
 
 static void
-pptp_stopccrq_print(const u_char *dat)
+pptp_stopccrq_print(struct netdissect_options *ipdo,
+		    const u_char *dat)
 {
 	struct pptp_msg_stopccrq *ptr = (struct pptp_msg_stopccrq *)dat;
 
@@ -684,14 +689,15 @@ trunc:
 }
 
 static void
-pptp_stopccrp_print(const u_char *dat)
+pptp_stopccrp_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_stopccrp *ptr = (struct pptp_msg_stopccrp *)dat;
 
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_StopCCRP);
+	pptp_result_code_print(ipdo, &ptr->result_code,
+			       PPTP_CTRL_MSG_TYPE_StopCCRP);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo, &ptr->err_code);
 	TCHECK(ptr->reserved1);
 
 	return;
@@ -701,7 +707,7 @@ trunc:
 }
 
 static void
-pptp_echorq_print(const u_char *dat)
+pptp_echorq_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_echorq *ptr = (struct pptp_msg_echorq *)dat;
 
@@ -715,16 +721,16 @@ trunc:
 }
 
 static void
-pptp_echorp_print(const u_char *dat)
+pptp_echorp_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_echorp *ptr = (struct pptp_msg_echorp *)dat;
 
 	TCHECK(ptr->id);
 	pptp_id_print(&ptr->id);
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_ECHORP);
+	pptp_result_code_print(ipdo,&ptr->result_code, PPTP_CTRL_MSG_TYPE_ECHORP);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo,&ptr->err_code);
 	TCHECK(ptr->reserved1);
 	
 	return;
@@ -734,7 +740,7 @@ trunc:
 }
 
 static void
-pptp_ocrq_print(const u_char *dat)
+pptp_ocrq_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_ocrq *ptr = (struct pptp_msg_ocrq *)dat;
 
@@ -769,7 +775,7 @@ trunc:
 }
 
 static void
-pptp_ocrp_print(const u_char *dat)
+pptp_ocrp_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_ocrp *ptr = (struct pptp_msg_ocrp *)dat;
 
@@ -778,9 +784,9 @@ pptp_ocrp_print(const u_char *dat)
 	TCHECK(ptr->peer_call_id);
 	pptp_peer_call_id_print(&ptr->peer_call_id);
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_OCRP);
+	pptp_result_code_print(ipdo,&ptr->result_code, PPTP_CTRL_MSG_TYPE_OCRP);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo,&ptr->err_code);
 	TCHECK(ptr->cause_code);
 	pptp_cause_code_print(&ptr->cause_code);
 	TCHECK(ptr->conn_speed);
@@ -799,7 +805,7 @@ trunc:
 }
 
 static void
-pptp_icrq_print(const u_char *dat)
+pptp_icrq_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_icrq *ptr = (struct pptp_msg_icrq *)dat;
 
@@ -829,7 +835,7 @@ trunc:
 }
 
 static void
-pptp_icrp_print(const u_char *dat)
+pptp_icrp_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_icrp *ptr = (struct pptp_msg_icrp *)dat;
 	
@@ -838,9 +844,9 @@ pptp_icrp_print(const u_char *dat)
 	TCHECK(ptr->peer_call_id);
 	pptp_peer_call_id_print(&ptr->peer_call_id);
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_ICRP);
+	pptp_result_code_print(ipdo,&ptr->result_code, PPTP_CTRL_MSG_TYPE_ICRP);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo,&ptr->err_code);
 	TCHECK(ptr->recv_winsiz);
 	pptp_recv_winsiz_print(&ptr->recv_winsiz);
 	TCHECK(ptr->pkt_proc_delay);
@@ -854,7 +860,7 @@ trunc:
 }
 
 static void
-pptp_iccn_print(const u_char *dat)
+pptp_iccn_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_iccn *ptr = (struct pptp_msg_iccn *)dat;
 
@@ -877,7 +883,7 @@ trunc:
 }
 
 static void
-pptp_ccrq_print(const u_char *dat)
+pptp_ccrq_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_ccrq *ptr = (struct pptp_msg_ccrq *)dat;
 
@@ -892,16 +898,16 @@ trunc:
 }
 
 static void
-pptp_cdn_print(const u_char *dat)
+pptp_cdn_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_cdn *ptr = (struct pptp_msg_cdn *)dat;
 
 	TCHECK(ptr->call_id);
 	pptp_call_id_print(&ptr->call_id);
 	TCHECK(ptr->result_code);
-	pptp_result_code_print(&ptr->result_code, PPTP_CTRL_MSG_TYPE_CDN);
+	pptp_result_code_print(ipdo,&ptr->result_code, PPTP_CTRL_MSG_TYPE_CDN);
 	TCHECK(ptr->err_code);
-	pptp_err_code_print(&ptr->err_code);
+	pptp_err_code_print(ipdo,&ptr->err_code);
 	TCHECK(ptr->cause_code);
 	pptp_cause_code_print(&ptr->cause_code);
 	TCHECK(ptr->reserved1);
@@ -915,7 +921,7 @@ trunc:
 }
 
 static void
-pptp_wen_print(const u_char *dat)
+pptp_wen_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_wen *ptr = (struct pptp_msg_wen *)dat;
 
@@ -944,7 +950,7 @@ trunc:
 }
 
 static void
-pptp_sli_print(const u_char *dat)
+pptp_sli_print(struct netdissect_options *ipdo, const u_char *dat)
 {
 	struct pptp_msg_sli *ptr = (struct pptp_msg_sli *)dat;
 
@@ -963,7 +969,7 @@ trunc:
 }
 
 void
-pptp_print(const u_char *dat, u_int length)
+pptp_print(struct netdissect_options *ipdo, const u_char *dat, u_int length)
 {
 	const struct pptp_hdr *hdr;
 	u_int32_t mc;
@@ -1014,49 +1020,49 @@ pptp_print(const u_char *dat, u_int length)
 
 	switch(ctrl_msg_type) {
 	case PPTP_CTRL_MSG_TYPE_SCCRQ:
-		pptp_sccrq_print(dat);
+		pptp_sccrq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_SCCRP:
-		pptp_sccrp_print(dat);
+		pptp_sccrp_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_StopCCRQ:
-		pptp_stopccrq_print(dat);
+		pptp_stopccrq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_StopCCRP:
-		pptp_stopccrp_print(dat);
+		pptp_stopccrp_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_ECHORQ:
-		pptp_echorq_print(dat);
+		pptp_echorq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_ECHORP:
-		pptp_echorp_print(dat);
+		pptp_echorp_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_OCRQ:
-		pptp_ocrq_print(dat);
+		pptp_ocrq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_OCRP:
-		pptp_ocrp_print(dat);
+		pptp_ocrp_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_ICRQ:
-		pptp_icrq_print(dat);
+		pptp_icrq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_ICRP:
-		pptp_icrp_print(dat);
+		pptp_icrp_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_ICCN:
-		pptp_iccn_print(dat);
+		pptp_iccn_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_CCRQ:
-		pptp_ccrq_print(dat);
+		pptp_ccrq_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_CDN:
-		pptp_cdn_print(dat);
+		pptp_cdn_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_WEN:
-		pptp_wen_print(dat);
+		pptp_wen_print(ipdo,dat);
 		break;
 	case PPTP_CTRL_MSG_TYPE_SLI:
-		pptp_sli_print(dat);
+		pptp_sli_print(ipdo,dat);
 		break;
 	default:
 		/* do nothing */

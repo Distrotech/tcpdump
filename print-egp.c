@@ -20,7 +20,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-egp.c,v 1.28 2001-09-17 21:58:01 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-egp.c,v 1.28.2.1 2001-10-01 04:02:28 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -37,6 +37,7 @@ static const char rcsid[] =
 #include <netdb.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -140,7 +141,8 @@ const char *egp_reasons[] = {
 };
 
 static void
-egpnrprint(register const struct egp_packet *egp, register u_int length)
+egpnrprint(struct netdissect_options *ipdo,
+	   register const struct egp_packet *egp, register u_int length)
 {
 	register const u_char *cp;
 	u_int32_t addr;
@@ -219,7 +221,8 @@ trunc:
 }
 
 void
-egp_print(register const u_char *bp, register u_int length,
+egp_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register u_int length,
 	  register const u_char *bp2)
 {
 	register const struct egp_packet *egp;
@@ -333,7 +336,7 @@ egp_print(register const u_char *bp, register u_int length,
 		       egp->egp_intgw,
 		       egp->egp_extgw);
 		if (vflag)
-			egpnrprint(egp, length);
+			egpnrprint(ipdo, egp, length);
 		break;
 
 	case EGPT_ERROR:

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-tcp.c,v 1.89 2001-09-17 20:06:18 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-tcp.c,v 1.89.2.1 2001-10-01 04:02:54 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,6 +41,7 @@ static const char rcsid[] =
 #include <ctype.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
@@ -54,7 +55,8 @@ static const char rcsid[] =
 
 #include "nameser.h"
 
-static void print_tcp_rst_data(register const u_char *sp, u_int length);
+static void print_tcp_rst_data(struct netdissect_options *ipdo,
+			       register const u_char *sp, u_int length);
 
 #define MAX_RST_DATA_LEN	30
 
@@ -178,7 +180,8 @@ static int tcp6_cksum(const struct ip6_hdr *ip6, const struct tcphdr *tp,
 #endif
 
 void
-tcp_print(register const u_char *bp, register u_int length,
+tcp_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register u_int length,
 	  register const u_char *bp2, int fragmented)
 {
 	register const struct tcphdr *tp;
@@ -223,13 +226,15 @@ tcp_print(register const u_char *bp, register u_int length,
 	if (!qflag) {
 		if ((u_char *)tp + 4 + sizeof(struct rpc_msg) <= snapend &&
 		    dport == NFS_PORT) {
-			nfsreq_print((u_char *)tp + hlen + 4, length - hlen,
+			nfsreq_print(ipdo,
+				     (u_char *)tp + hlen + 4, length - hlen,
 				     (u_char *)ip);
 			return;
 		} else if ((u_char *)tp + 4 + sizeof(struct rpc_msg)
 			   <= snapend &&
 			   sport == NFS_PORT) {
-			nfsreply_print((u_char *)tp + hlen + 4, length - hlen,
+			nfsreply_print(ipdo,
+				       (u_char *)tp + hlen + 4, length - hlen,
 				       (u_char *)ip);
 			return;
 		}
@@ -239,12 +244,13 @@ tcp_print(register const u_char *bp, register u_int length,
 		if (ip6->ip6_nxt == IPPROTO_TCP) {
 			(void)printf("%s.%s > %s.%s: ",
 				ip6addr_string(&ip6->ip6_src),
-				tcpport_string(sport),
+				tcpport_string(ndo, sport),
 				ip6addr_string(&ip6->ip6_dst),
-				tcpport_string(dport));
+				tcpport_string(ndo, dport));
 		} else {
 			(void)printf("%s > %s: ",
-				tcpport_string(sport), tcpport_string(dport));
+				     tcpport_string(ndo, sport),
+				     tcpport_string(ndo, dport));
 		}
 	} else
 #endif /*INET6*/
@@ -252,12 +258,13 @@ tcp_print(register const u_char *bp, register u_int length,
 		if (ip->ip_p == IPPROTO_TCP) {
 			(void)printf("%s.%s > %s.%s: ",
 				ipaddr_string(&ip->ip_src),
-				tcpport_string(sport),
+				tcpport_string(ipdo,sport),
 				ipaddr_string(&ip->ip_dst),
-				tcpport_string(dport));
+				tcpport_string(ipdo,dport));
 		} else {
 			(void)printf("%s > %s: ",
-				tcpport_string(sport), tcpport_string(dport));
+				     tcpport_string(ipdo, sport),
+				     tcpport_string(ipdo, dport));
 		}
 	}
 
@@ -368,7 +375,7 @@ tcp_print(register const u_char *bp, register u_int length,
 				th->nxt = (struct tcp_seq_hash *)
 					calloc(1, sizeof(*th));
 				if (th->nxt == NULL)
-					error("tcp_print: calloc");
+					error(ipdo, "tcp_print: calloc");
 			}
 			th->addr = tha;
 			if (rev)
@@ -591,25 +598,25 @@ tcp_print(register const u_char *bp, register u_int length,
 	bp += TH_OFF(tp) * 4;
 	if (flags & TH_RST) {
 		if (vflag)
-			print_tcp_rst_data(bp, length);
+			print_tcp_rst_data(ipdo, bp, length);
 	} else {
 		if (sport == TELNET_PORT || dport == TELNET_PORT) {
 			if (!qflag && vflag)
-				telnet_print(bp, length);
+				telnet_print(ipdo, bp, length);
 		} else if (sport == BGP_PORT || dport == BGP_PORT)
-			bgp_print(bp, length);
+			bgp_print(ipdo, bp, length);
 		else if (sport == PPTP_PORT || dport == PPTP_PORT)
-			pptp_print(bp, length);
+			pptp_print(ipdo, bp, length);
 		else if (sport == NETBIOS_SSN_PORT || dport == NETBIOS_SSN_PORT)
-			nbt_tcp_print(bp, length);
+			nbt_tcp_print(ipdo, bp, length);
 		else if (sport == BXXP_PORT || dport == BXXP_PORT)
-			bxxp_print(bp, length);
+			bxxp_print(ipdo, bp, length);
 		else if (length > 2 &&
 		    (sport == NAMESERVER_PORT || dport == NAMESERVER_PORT)) {
 			/* TCP DNS query has 2byte length at the head */
-			ns_print(bp + 2, length - 2);
+			ns_print(ipdo, bp + 2, length - 2);
 		} else if (sport == MSDP_PORT || dport == MSDP_PORT) {
-			msdp_print(bp, length);
+			msdp_print(ipdo, bp, length);
 		}
 	}
 	return;
@@ -640,7 +647,8 @@ trunc:
  */
 
 static void
-print_tcp_rst_data(register const u_char *sp, u_int length)
+print_tcp_rst_data(struct netdissect_options *ipdo,
+		   register const u_char *sp, u_int length)
 {
 	int c;
 

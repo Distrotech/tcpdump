@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "$Id: print-radius.c,v 1.9 2001-07-15 19:27:45 guy Exp $";
+    "$Id: print-radius.c,v 1.9.2.1 2001-10-01 04:02:47 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
@@ -104,11 +105,16 @@ static const char rcsid[] =
 /********************************/
 
 
-static void print_attr_string(register u_char *, u_int, u_short );
-static void print_attr_num(register u_char *, u_int, u_short );
-static void print_attr_address(register u_char *, u_int, u_short);
-static void print_attr_time(register u_char *, u_int, u_short);
-static void print_attr_strange(register u_char *, u_int, u_short);
+static void print_attr_string(struct netdissect_options *ipdo,
+			      register u_char *, u_int, u_short );
+static void print_attr_num(struct netdissect_options *ipdo,
+			   register u_char *, u_int, u_short );
+static void print_attr_address(struct netdissect_options *ipdo,
+			       register u_char *, u_int, u_short);
+static void print_attr_time(struct netdissect_options *ipdo,
+			    register u_char *, u_int, u_short);
+static void print_attr_strange(struct netdissect_options *ipdo,
+			       register u_char *, u_int, u_short);
 
 
 struct radius_hdr { u_int8_t  code; /* Radius packet code  */
@@ -304,7 +310,8 @@ struct attrtype { char *name;            /* Attribute name                 */
                   const char **subtypes; /* Standard Values (if any)       */
                   u_char siz_subtypes;   /* Size of total standard values  */
                   u_char first_subtype;  /* First standard value is 0 or 1 */
-                  void (*print_func)(register u_char *, u_int, u_short );
+                  void (*print_func)(struct netdissect_options *,
+				     register u_char *, u_int, u_short );
                 } attr_type[]=
   {
      { NULL,             NULL, 0, 0, NULL               },
@@ -416,7 +423,8 @@ struct attrtype { char *name;            /* Attribute name                 */
 /* Returns nothing.          */
 /*****************************/
 static void
-print_attr_string(register u_char *data, u_int length, u_short attr_code )
+print_attr_string(struct netdissect_options *ipdo,
+		  register u_char *data, u_int length, u_short attr_code )
 {
    register u_int i;
    
@@ -468,7 +476,8 @@ print_attr_string(register u_char *data, u_int length, u_short attr_code )
 /* Returns nothing.           */
 /******************************/
 static void
-print_attr_num(register u_char *data, u_int length, u_short attr_code )
+print_attr_num(struct netdissect_options *ipdo,
+	       register u_char *data, u_int length, u_short attr_code )
 {
    u_int8_t tag;
    u_int32_t timeout;
@@ -583,7 +592,8 @@ print_attr_num(register u_char *data, u_int length, u_short attr_code )
 /* Returns nothing.          */
 /*****************************/
 static void
-print_attr_address(register u_char *data, u_int length, u_short attr_code )
+print_attr_address(struct netdissect_options *ipdo,
+		   register u_char *data, u_int length, u_short attr_code )
 {
    if (length != 4)
    {
@@ -626,7 +636,8 @@ print_attr_address(register u_char *data, u_int length, u_short attr_code )
 /*************************************/
 /* Returns nothing.                  */
 /*************************************/
-static void print_attr_time(register u_char *data, u_int length, u_short attr_code)
+static void print_attr_time(struct netdissect_options *ipdo,
+			    register u_char *data, u_int length, u_short attr_code)
 {
    time_t attr_time;
    char string[26];
@@ -658,7 +669,9 @@ static void print_attr_time(register u_char *data, u_int length, u_short attr_co
 /***********************************/
 /* Returns nothing.                */
 /***********************************/
-static void print_attr_strange(register u_char *data, u_int length, u_short attr_code)
+static void print_attr_strange(struct netdissect_options *ipdo,
+			       register u_char *data, u_int length,
+			       u_short attr_code)
 {
    u_short len_data;
    
@@ -732,7 +745,8 @@ static void print_attr_strange(register u_char *data, u_int length, u_short attr
 
 
 static void
-radius_attr_print(register const u_char *attr, u_int length)
+radius_attr_print(struct netdissect_options *ipdo,
+		  register const u_char *attr, u_int length)
 {
    register const struct radius_attr *rad_attr = (struct radius_attr *)attr;
    
@@ -761,7 +775,7 @@ radius_attr_print(register const u_char *attr, u_int length)
            if (rad_attr->len > 2)
            {
                if ( attr_type[rad_attr->type].print_func )
-                  (*attr_type[rad_attr->type].print_func)( 
+		 (*attr_type[rad_attr->type].print_func)(ipdo,
 		                           ((u_char *)(rad_attr+1)),
                                            rad_attr->len - 2, rad_attr->type);
            }
@@ -781,7 +795,8 @@ radius_attr_print(register const u_char *attr, u_int length)
 
 
 void
-radius_print(const u_char *dat, u_int length)
+radius_print(struct netdissect_options *ipdo,
+	     const u_char *dat, u_int length)
 {
    register const struct radius_hdr *rad;
    register int i;
@@ -854,5 +869,5 @@ radius_print(const u_char *dat, u_int length)
    printf(" [id %d]", rad->id);
  
    if (i)
-      radius_attr_print( dat + MIN_RADIUS_LEN, i);  
+      radius_attr_print(ipdo, dat + MIN_RADIUS_LEN, i);  
 }

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-pim.c,v 1.29 2001-07-04 21:36:15 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-pim.c,v 1.29.2.1 2001-10-01 04:02:44 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -58,16 +58,19 @@ struct pim {
 #include <stdlib.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
 
 #include "ip.h"
 
-static void pimv2_print(register const u_char *bp, register u_int len);
+static void pimv2_print(struct netdissect_options *ipdo,
+			register const u_char *bp, register u_int len);
 
 static void
-pimv1_join_prune_print(register const u_char *bp, register u_int len)
+pimv1_join_prune_print(struct netdissect_options *ipdo,
+		       register const u_char *bp, register u_int len)
 {
 	int maddrlen, addrlen, ngroups, njoin, nprune;
 	int njp;
@@ -150,7 +153,8 @@ trunc:
 }
 
 void
-pimv1_print(register const u_char *bp, register u_int len)
+pimv1_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, register u_int len)
 {
 	register const u_char *ep;
 	register u_char type;
@@ -203,7 +207,7 @@ pimv1_print(register const u_char *bp, register u_int len)
 	case 3:
 		(void)printf(" Join/Prune");
 		if (vflag)
-			pimv1_join_prune_print(&bp[8], len - 8);
+			pimv1_join_prune_print(ipdo, &bp[8], len - 8);
 		break;
 	case 4:
 		(void)printf(" RP-reachable");
@@ -233,12 +237,12 @@ pimv1_print(register const u_char *bp, register u_int len)
 	case 6:
 		(void)printf(" Graft");
 		if (vflag)
-			pimv1_join_prune_print(&bp[8], len - 8);
+			pimv1_join_prune_print(ipdo, &bp[8], len - 8);
 		break;
 	case 7:
 		(void)printf(" Graft-ACK");
 		if (vflag)
-			pimv1_join_prune_print(&bp[8], len - 8);
+			pimv1_join_prune_print(ipdo, &bp[8], len - 8);
 		break;
 	case 8:
 		(void)printf(" Mode");
@@ -263,7 +267,8 @@ trunc:
  * This implements version 1+, dated Sept 9, 1998.
  */
 void
-cisco_autorp_print(register const u_char *bp, register u_int len)
+cisco_autorp_print(struct netdissect_options *ipdo,
+		   register const u_char *bp, register u_int len)
 {
 	int type;
 	int numrps;
@@ -353,7 +358,8 @@ trunc:
 }
 
 void
-pim_print(register const u_char *bp, register u_int len)
+pim_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register u_int len)
 {
 	register const u_char *ep;
 	register struct pim *pim = (struct pim *)bp;
@@ -368,7 +374,7 @@ pim_print(register const u_char *bp, register u_int len)
 	switch (PIM_VER(pim->pim_typever)) {
 	case 2:		/* avoid hardcoding? */
 		(void)printf("pim v2");
-		pimv2_print(bp, len);
+		pimv2_print(ipdo, bp, len);
 		break;
 	default:
 		(void)printf("pim v%d", PIM_VER(pim->pim_typever));
@@ -444,7 +450,8 @@ enum pimv2_addrtype {
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
 static int
-pimv2_addr_print(const u_char *bp, enum pimv2_addrtype at, int silent)
+pimv2_addr_print(struct netdissect_options *ipdo,
+		 const u_char *bp, enum pimv2_addrtype at, int silent)
 {
 	int af;
 	char *afstr;
@@ -550,7 +557,8 @@ trunc:
 }
 
 static void
-pimv2_print(register const u_char *bp, register u_int len)
+pimv2_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, register u_int len)
 {
 	register const u_char *ep;
 	register struct pim *pim = (struct pim *)bp;
@@ -640,12 +648,12 @@ pimv2_print(register const u_char *bp, register u_int len)
 		switch (IP_V(ip)) {
 		case 4:	/* IPv4 */
 			printf(" ");
-			ip_print(bp, len);
+			ip_print(ipdo, bp, len);
 			break;
 #ifdef INET6
 		case 6:	/* IPv6 */
 			printf(" ");
-			ip6_print(bp, len);
+			ip6_print(ipdo, bp, len);
 			break;
 #endif
 		default:
@@ -661,7 +669,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		if (bp >= ep)
 			break;
 		(void)printf(" group=");
-		if ((advance = pimv2_addr_print(bp, pimv2_group, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -669,7 +677,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		if (bp >= ep)
 			break;
 		(void)printf(" source=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -702,7 +710,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 			if (bp >= ep)
 				break;
 			(void)printf(" upstream-neighbor=");
-			if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+			if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 				(void)printf("...");
 				break;
 			}
@@ -725,7 +733,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 			if (bp >= ep)
 				goto jp_done;
 			(void)printf(" (group%d: ", i);
-			if ((advance = pimv2_addr_print(bp, pimv2_group, 0)) < 0) {
+			if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0)) < 0) {
 				(void)printf("...)");
 				goto jp_done;
 			}
@@ -740,7 +748,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 			bp += 4; len -= 4;
 			for (j = 0; j < njoin; j++) {
 				(void)printf(" ");
-				if ((advance = pimv2_addr_print(bp, pimv2_source, 0)) < 0) {
+				if ((advance = pimv2_addr_print(ipdo, bp, pimv2_source, 0)) < 0) {
 					(void)printf("...)");
 					goto jp_done;
 				}
@@ -749,7 +757,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 			(void)printf(" prune=%u", nprune);
 			for (j = 0; j < nprune; j++) {
 				(void)printf(" ");
-				if ((advance = pimv2_addr_print(bp, pimv2_source, 0)) < 0) {
+				if ((advance = pimv2_addr_print(ipdo, bp, pimv2_source, 0)) < 0) {
 					(void)printf("...)");
 					goto jp_done;
 				}
@@ -781,7 +789,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		/* Encoded-Unicast-BSR-Address */
 		if (bp >= ep) break;
 		(void)printf(" BSR=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -790,7 +798,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		for (i = 0; bp < ep; i++) {
 			/* Encoded-Group Address */
 			(void)printf(" (group%d: ", i);
-			if ((advance = pimv2_addr_print(bp, pimv2_group, 0))
+			if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0))
 			    < 0) {
 				(void)printf("...)");
 				goto bs_done;
@@ -813,7 +821,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 			for (j = 0; j < frpcnt && bp < ep; j++) {
 				/* each RP info */
 				(void)printf(" RP%d=", j);
-				if ((advance = pimv2_addr_print(bp,
+				if ((advance = pimv2_addr_print(ipdo, bp,
 								pimv2_unicast,
 								0)) < 0) {
 					(void)printf("...)");
@@ -845,7 +853,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		if (bp >= ep)
 			break;
 		(void)printf(" group=");
-		if ((advance = pimv2_addr_print(bp, pimv2_group, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -853,7 +861,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		if (bp >= ep)
 			break;
 		(void)printf(" src=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -887,7 +895,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		/* Encoded-Unicast-RP-Address */
 		if (bp >= ep) break;
 		(void)printf(" RP=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
@@ -896,7 +904,7 @@ pimv2_print(register const u_char *bp, register u_int len)
 		/* Encoded-Group Addresses */
 		for (i = 0; i < pfxcnt && bp < ep; i++) {
 			(void)printf(" Group%d=", i);
-			if ((advance = pimv2_addr_print(bp, pimv2_group, 0))
+			if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0))
 			    < 0) {
 				(void)printf("...");
 				break;
@@ -909,19 +917,19 @@ pimv2_print(register const u_char *bp, register u_int len)
 	case 9:
 		(void)printf(" Prune-Refresh");
 		(void)printf(" src=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
 		bp += advance;
 		(void)printf(" grp=");
-		if ((advance = pimv2_addr_print(bp, pimv2_group, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_group, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}
 		bp += advance;
 		(void)printf(" forwarder=");
-		if ((advance = pimv2_addr_print(bp, pimv2_unicast, 0)) < 0) {
+		if ((advance = pimv2_addr_print(ipdo, bp, pimv2_unicast, 0)) < 0) {
 			(void)printf("...");
 			break;
 		}

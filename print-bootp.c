@@ -22,7 +22,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-bootp.c,v 1.60 2001-09-17 21:57:56 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-bootp.c,v 1.60.2.1 2001-10-01 04:02:23 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,14 +42,15 @@ struct rtentry;
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
 #include "ether.h"
 #include "bootp.h"
 
-static void rfc1048_print(const u_char *);
-static void cmu_print(const u_char *);
+static void rfc1048_print(struct netdissect_options *ipdo, const u_char *);
+static void cmu_print(struct netdissect_options *, const u_char *);
 
 static char tstr[] = " [|bootp]";
 
@@ -57,7 +58,8 @@ static char tstr[] = " [|bootp]";
  * Print bootp requests
  */
 void
-bootp_print(register const u_char *cp, u_int length,
+bootp_print(struct netdissect_options *ipdo,
+	    register const u_char *cp, u_int length,
 	    u_short sport, u_short dport)
 {
 	register const struct bootp *bp;
@@ -138,7 +140,8 @@ bootp_print(register const u_char *cp, u_int length,
 		else
 			e = 0;
 		if (e == 0 || memcmp((const char *)bp->bp_chaddr, e, 6) != 0)
-			printf(" ether %s", etheraddr_string(bp->bp_chaddr));
+			printf(" ether %s",
+			       etheraddr_string(ipdo, bp->bp_chaddr));
 	}
 
 	TCHECK2(bp->bp_sname[0], 1);		/* check first char only */
@@ -166,10 +169,10 @@ bootp_print(register const u_char *cp, u_int length,
 	TCHECK(bp->bp_vend[0]);
 	if (memcmp((const char *)bp->bp_vend, vm_rfc1048,
 		 sizeof(u_int32_t)) == 0)
-		rfc1048_print(bp->bp_vend);
+		rfc1048_print(ipdo, bp->bp_vend);
 	else if (memcmp((const char *)bp->bp_vend, vm_cmu,
 		      sizeof(u_int32_t)) == 0)
-		cmu_print(bp->bp_vend);
+		cmu_print(ipdo, bp->bp_vend);
 	else {
 		u_int32_t ul;
 
@@ -347,7 +350,8 @@ static struct tok arp2str[] = {
 };
 
 static void
-rfc1048_print(register const u_char *bp)
+rfc1048_print(struct netdissect_options *ipdo,
+	      register const u_char *bp)
 {
 	register u_char tag;
 	register u_int len, size;
@@ -618,7 +622,8 @@ trunc:
 }
 
 static void
-cmu_print(register const u_char *bp)
+cmu_print(struct netdissect_options *ipdo,
+	  register const u_char *bp)
 {
 	register const struct cmu_vend *cmu;
 

@@ -26,7 +26,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-cdp.c,v 1.11 2001-09-17 21:57:56 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-cdp.c,v 1.11.2.1 2001-10-01 04:02:24 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -43,15 +43,18 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
 
-static int cdp_print_addr(const u_char *, int);
+static int cdp_print_addr(struct netdissect_options *ndo,
+			  const u_char *, int);
 static int cdp_print_prefixes(const u_char *, int);
 
 void
-cdp_print(const u_char *p, u_int length, u_int caplen,
+cdp_print(struct netdissect_options *ipdo,
+	  const u_char *p, u_int length, u_int caplen,
 	  const u_char *esrc, const u_char *edst)
 {
 	u_int i;
@@ -92,7 +95,7 @@ cdp_print(const u_char *p, u_int length, u_int caplen,
 			break;
 		case 0x02:
 			printf(" Addr");
-			if (cdp_print_addr(p + i + 4, len - 4) < 0)
+			if (cdp_print_addr(ndo, p + i + 4, len - 4) < 0)
 				goto trunc;
 			break;
 		case 0x03:
@@ -154,7 +157,8 @@ trunc:
 #define PT_IEEE_802_2		2	/* IEEE 802.2 LLC header */
 
 static int
-cdp_print_addr(const u_char * p, int l)
+cdp_print_addr(struct netdissect_options *ndo,
+	       const u_char * p, int l)
 {
 	int pt, pl, al, num;
 	const u_char *endp = p + l;

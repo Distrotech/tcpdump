@@ -24,7 +24,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ipx.c,v 1.30 2001-01-15 03:23:59 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ipx.c,v 1.30.2.1 2001-10-01 04:02:34 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,6 +41,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ipx.h"
@@ -48,15 +49,17 @@ static const char rcsid[] =
 
 
 static const char *ipxaddr_string(u_int32_t, const u_char *);
-void ipx_decode(const struct ipxHdr *, const u_char *, u_int);
-void ipx_sap_print(const u_short *, u_int);
-void ipx_rip_print(const u_short *, u_int);
+void ipx_decode(struct netdissect_options *,
+		const struct ipxHdr *, const u_char *, u_int);
+void ipx_sap_print(struct netdissect_options *,const u_short *, u_int);
+void ipx_rip_print(struct netdissect_options *,const u_short *, u_int);
 
 /*
  * Print IPX datagram packets.
  */
 void
-ipx_print(const u_char *p, u_int length)
+ipx_print(struct netdissect_options *ipdo,
+	  const u_char *p, u_int length)
 {
 	const struct ipxHdr *ipx = (const struct ipxHdr *)p;
 
@@ -73,7 +76,7 @@ ipx_print(const u_char *p, u_int length)
 	TCHECK(ipx->length);
 	length = EXTRACT_16BITS(&ipx->length);
 
-	ipx_decode(ipx, (u_char *)ipx + ipxSize, length - ipxSize);
+	ipx_decode(ipdo, ipx, (u_char *)ipx + ipxSize, length - ipxSize);
 	return;
 trunc:
 	printf("[|ipx %d]", length);
@@ -91,7 +94,8 @@ ipxaddr_string(u_int32_t net, const u_char *node)
 }
 
 void
-ipx_decode(const struct ipxHdr *ipx, const u_char *datap, u_int length)
+ipx_decode(struct netdissect_options *ipdo,
+	   const struct ipxHdr *ipx, const u_char *datap, u_int length)
 {
     register u_short dstSkt;
 
@@ -101,21 +105,21 @@ ipx_decode(const struct ipxHdr *ipx, const u_char *datap, u_int length)
 	(void)printf(" ipx-ncp %d", length);
 	break;
       case IPX_SKT_SAP:
-	ipx_sap_print((u_short *)datap, length);
+	ipx_sap_print(ipdo, (u_short *)datap, length);
 	break;
       case IPX_SKT_RIP:
-	ipx_rip_print((u_short *)datap, length);
+	ipx_rip_print(ipdo, (u_short *)datap, length);
 	break;
       case IPX_SKT_NETBIOS:
 	(void)printf(" ipx-netbios %d", length);
-	ipx_netbios_print(datap, length);
+	ipx_netbios_print(ipdo, datap, length);
 	break;
       case IPX_SKT_DIAGNOSTICS:
 	(void)printf(" ipx-diags %d", length);
 	break;
       case IPX_SKT_NWLINK_DGM:
 	(void)printf(" ipx-nwlink-dgm %d", length);
-	ipx_netbios_print(datap, length);
+	ipx_netbios_print(ipdo, datap, length);
 	break;
       case IPX_SKT_EIGRP:
 	(void)printf(" ipx-eigrp %d", length);
@@ -127,7 +131,8 @@ ipx_decode(const struct ipxHdr *ipx, const u_char *datap, u_int length)
 }
 
 void
-ipx_sap_print(const u_short *ipx, u_int length)
+ipx_sap_print(struct netdissect_options *ipdo,
+	      const u_short *ipx, u_int length)
 {
     int command, i;
 
@@ -175,7 +180,8 @@ trunc:
 }
 
 void
-ipx_rip_print(const u_short *ipx, u_int length)
+ipx_rip_print(struct netdissect_options *ipdo,
+	      const u_short *ipx, u_int length)
 {
     int command, i;
 

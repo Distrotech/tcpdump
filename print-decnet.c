@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-decnet.c,v 1.33 2001-09-17 21:57:59 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-decnet.c,v 1.33.2.1 2001-10-01 04:02:26 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -46,12 +46,16 @@ struct rtentry;
 #include <unistd.h>
 
 #include "decnet.h"
+
 #include "extract.h"
+
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 /* Forwards */
-static void print_decnet_ctlmsg(const union routehdr *, u_int);
+static void print_decnet_ctlmsg(struct netdissect_options *ipdo,
+				const union routehdr *, u_int);
 static void print_t_info(int);
 static void print_l1_routes(const char *, u_int);
 static void print_l2_routes(const char *, u_int);
@@ -68,7 +72,8 @@ extern char *dnet_htoa(struct dn_naddr *);
 #endif
 
 void
-decnet_print(register const u_char *ap, register u_int length,
+decnet_print(struct netdissect_options *ipdo,
+	     register const u_char *ap, register u_int length,
 	     register u_int caplen)
 {
 	static union routehdr rhcopy;
@@ -113,7 +118,7 @@ decnet_print(register const u_char *ap, register u_int length,
 
 	/* is it a control message? */
 	if (mflags & RMF_CTLMSG) {
-		print_decnet_ctlmsg(rhp, min(length, caplen));
+		print_decnet_ctlmsg(ipdo, rhp, min(length, caplen));
 		return;
 	}
 
@@ -143,7 +148,7 @@ decnet_print(register const u_char *ap, register u_int length,
 	}
 
 	(void)printf("%s > %s %d ",
-			dnaddr_string(src), dnaddr_string(dst), pktlen);
+			dnaddr_string(ipdo,src), dnaddr_string(ipdo,dst), pktlen);
 	if (vflag) {
 	    if (mflags & RMF_RQR)
 		(void)printf("RQR ");
@@ -158,7 +163,8 @@ decnet_print(register const u_char *ap, register u_int length,
 }
 
 static void
-print_decnet_ctlmsg(register const union routehdr *rhp, u_int length)
+print_decnet_ctlmsg(struct netdissect_options *ipdo,
+		    register const union routehdr *rhp, u_int length)
 {
 	int mflags = EXTRACT_LE_8BITS(rhp->rh_short.sh_flags);
 	register union controlmsg *cmp = (union controlmsg *)rhp;
@@ -180,32 +186,32 @@ print_decnet_ctlmsg(register const union routehdr *rhp, u_int length)
 	    print_t_info(info);
 	    (void)printf(
 		"src %sblksize %d vers %d eco %d ueco %d hello %d",
-			dnaddr_string(src), blksize, vers, eco, ueco,
+			dnaddr_string(ipdo,src), blksize, vers, eco, ueco,
 			hello);
 	    break;
 	case RMF_VER:
 	    (void)printf("verification ");
 	    src = EXTRACT_LE_16BITS(cmp->cm_ver.ve_src);
 	    other = EXTRACT_LE_8BITS(cmp->cm_ver.ve_fcnval);
-	    (void)printf("src %s fcnval %o", dnaddr_string(src), other);
+	    (void)printf("src %s fcnval %o", dnaddr_string(ipdo,src), other);
 	    break;
 	case RMF_TEST:
 	    (void)printf("test ");
 	    src = EXTRACT_LE_16BITS(cmp->cm_test.te_src);
 	    other = EXTRACT_LE_8BITS(cmp->cm_test.te_data);
-	    (void)printf("src %s data %o", dnaddr_string(src), other);
+	    (void)printf("src %s data %o", dnaddr_string(ipdo,src), other);
 	    break;
 	case RMF_L1ROUT:
 	    (void)printf("lev-1-routing ");
 	    src = EXTRACT_LE_16BITS(cmp->cm_l1rou.r1_src);
-	    (void)printf("src %s ", dnaddr_string(src));
+	    (void)printf("src %s ", dnaddr_string(ipdo,src));
 	    print_l1_routes(&(rhpx[sizeof(struct l1rout)]),
 				length - sizeof(struct l1rout));
 	    break;
 	case RMF_L2ROUT:
 	    (void)printf("lev-2-routing ");
 	    src = EXTRACT_LE_16BITS(cmp->cm_l2rout.r2_src);
-	    (void)printf("src %s ", dnaddr_string(src));
+	    (void)printf("src %s ", dnaddr_string(ipdo,src));
 	    print_l2_routes(&(rhpx[sizeof(struct l2rout)]),
 				length - sizeof(struct l2rout));
 	    break;
@@ -224,7 +230,7 @@ print_decnet_ctlmsg(register const union routehdr *rhp, u_int length)
 	    print_i_info(info);
 	    (void)printf(
 	    "vers %d eco %d ueco %d src %s blksize %d pri %d hello %d",
-			vers, eco, ueco, dnaddr_string(src),
+			vers, eco, ueco, dnaddr_string(ipdo,src),
 			blksize, priority, hello);
 	    print_elist(&(rhpx[sizeof(struct rhellomsg)]),
 				length - sizeof(struct rhellomsg));
@@ -248,8 +254,8 @@ print_decnet_ctlmsg(register const union routehdr *rhp, u_int length)
 	    print_i_info(info);
 	    (void)printf(
 	"vers %d eco %d ueco %d src %s blksize %d rtr %s hello %d data %o",
-			vers, eco, ueco, dnaddr_string(src),
-			blksize, dnaddr_string(dst), hello, other);
+			vers, eco, ueco, dnaddr_string(ipdo,src),
+			blksize, dnaddr_string(ipdo,dst), hello, other);
 	    break;
 
 	default:
@@ -731,7 +737,7 @@ print_reason(register int reason)
 }
 
 const char *
-dnnum_string(u_short dnaddr)
+dnnum_string(struct netdissect_options *ipdo, u_short dnaddr)
 {
 	char *str;
 	size_t siz;
@@ -740,13 +746,13 @@ dnnum_string(u_short dnaddr)
 
 	str = (char *)malloc(siz = sizeof("00.0000"));
 	if (str == NULL)
-		error("dnnum_string: malloc");
+		error(ipdo, "dnnum_string: malloc");
 	snprintf(str, siz, "%d.%d", area, node);
 	return(str);
 }
 
 const char *
-dnname_string(u_short dnaddr)
+dnname_string(struct netdissect_options *ipdo, u_short dnaddr)
 {
 #ifdef	HAVE_LIBDNET
 	struct dn_naddr dna;
@@ -755,7 +761,7 @@ dnname_string(u_short dnaddr)
 	memcpy((char *)dna.a_addr, (char *)&dnaddr, sizeof(short));
 	return (strdup(dnet_htoa(&dna)));
 #else
-	return(dnnum_string(dnaddr));	/* punt */
+	return(dnnum_string(ipdo, dnaddr));	/* punt */
 #endif
 }
 

@@ -25,7 +25,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-vjc.c,v 1.9 2000-10-09 01:53:21 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-vjc.c,v 1.9.2.1 2001-10-01 04:02:57 mcr Exp $ (LBL)";
 #endif
 
 #include <sys/param.h>
@@ -38,6 +38,7 @@ static const char rcsid[] =
 #include <pcap.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -45,7 +46,8 @@ static const char rcsid[] =
 #include "ppp.h"
 
 int
-vjc_print(register const char *bp, register u_int length, u_short proto)
+vjc_print(struct netdissect_options *ipdo,
+	  register const char *bp, register u_int length, u_short proto)
 {
 	int i;
 

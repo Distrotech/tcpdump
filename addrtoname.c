@@ -23,7 +23,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/addrtoname.c,v 1.83 2001-09-17 21:57:50 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/addrtoname.c,v 1.83.2.1 2001-10-01 04:02:16 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -55,6 +55,7 @@ struct rtentry;
 #include <stdlib.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "llc.h"
@@ -171,7 +172,8 @@ nohostname(int signo)
  * is assumed to be in network byte order.
  */
 const char *
-getname(const u_char *ap)
+getname(struct netdissect_options *ipdo,
+	const u_char *ap)
 {
 	register struct hostent *hp;
 	u_int32_t addr;
@@ -184,7 +186,7 @@ getname(const u_char *ap)
 			return (p->name);
 	}
 	p->addr = addr;
-	p->nxt = newhnamemem();
+	p->nxt = newhnamemem(ipdo);
 
 	/*
 	 * Only print names when:
@@ -228,7 +230,7 @@ getname(const u_char *ap)
  * is assumed to be in network byte order.
  */
 const char *
-getname6(const u_char *ap)
+getname6(struct netdissect_options *ipdo, const u_char *ap)
 {
 	register struct hostent *hp;
 	struct in6_addr addr;
@@ -243,7 +245,7 @@ getname6(const u_char *ap)
 			return (p->name);
 	}
 	p->addr = addr;
-	p->nxt = newh6namemem();
+	p->nxt = newh6namemem(ndo);
 
 	/*
 	 * Only print names when:
@@ -293,7 +295,7 @@ static char hex[] = "0123456789abcdef";
 /* Find the hash node that corresponds the ether address 'ep' */
 
 static inline struct enamemem *
-lookup_emem(const u_char *ep)
+lookup_emem(struct netdissect_options *ipdo, const u_char *ep)
 {
 	register u_int i, j, k;
 	struct enamemem *tp;
@@ -315,7 +317,7 @@ lookup_emem(const u_char *ep)
 	tp->e_addr2 = k;
 	tp->e_nxt = (struct enamemem *)calloc(1, sizeof(*tp));
 	if (tp->e_nxt == NULL)
-		error("lookup_emem: calloc");
+		error(ipdo, "lookup_emem: calloc");
 
 	return tp;
 }
@@ -326,7 +328,8 @@ lookup_emem(const u_char *ep)
  */
 
 static inline struct enamemem *
-lookup_bytestring(register const u_char *bs, const unsigned int nlen)
+lookup_bytestring(struct netdissect_options *ndo,
+		  register const u_char *bs, const unsigned int nlen)
 {
 	struct enamemem *tp;
 	register u_int i, j, k;
@@ -360,7 +363,7 @@ lookup_bytestring(register const u_char *bs, const unsigned int nlen)
 	memcpy(tp->e_bs, bs, nlen);
 	tp->e_nxt = (struct enamemem *)calloc(1, sizeof(*tp));
 	if (tp->e_nxt == NULL)
-		error("lookup_bytestring: calloc");
+		error(ndo, "lookup_bytestring: calloc");
 
 	return tp;
 }
@@ -368,7 +371,8 @@ lookup_bytestring(register const u_char *bs, const unsigned int nlen)
 /* Find the hash node that corresponds the NSAP 'nsap' */
 
 static inline struct enamemem *
-lookup_nsap(register const u_char *nsap)
+lookup_nsap(struct netdissect_options *ipdo,
+	    register const u_char *nsap)
 {
 	register u_int i, j, k;
 	unsigned int nlen = *nsap;
@@ -399,11 +403,11 @@ lookup_nsap(register const u_char *nsap)
 	tp->e_addr2 = k;
 	tp->e_nsap = (u_char *)malloc(nlen + 1);
 	if (tp->e_nsap == NULL)
-		error("lookup_nsap: malloc");
+		error(ipdo, "lookup_nsap: malloc");
 	memcpy((char *)tp->e_nsap, (const char *)nsap, nlen + 1);
 	tp->e_nxt = (struct enamemem *)calloc(1, sizeof(*tp));
 	if (tp->e_nxt == NULL)
-		error("lookup_nsap: calloc");
+		error(ipdo, "lookup_nsap: calloc");
 
 	return tp;
 }
@@ -411,7 +415,8 @@ lookup_nsap(register const u_char *nsap)
 /* Find the hash node that corresponds the protoid 'pi'. */
 
 static inline struct protoidmem *
-lookup_protoid(const u_char *pi)
+lookup_protoid(struct netdissect_options *ipdo,
+	       const u_char *pi)
 {
 	register u_int i, j;
 	struct protoidmem *tp;
@@ -431,20 +436,21 @@ lookup_protoid(const u_char *pi)
 	tp->p_proto = j;
 	tp->p_nxt = (struct protoidmem *)calloc(1, sizeof(*tp));
 	if (tp->p_nxt == NULL)
-		error("lookup_protoid: calloc");
+		error(ipdo, "lookup_protoid: calloc");
 
 	return tp;
 }
 
 const char *
-etheraddr_string(register const u_char *ep)
+etheraddr_string(struct netdissect_options *ipdo,
+		 register const u_char *ep)
 {
 	register u_int i, j;
 	register char *cp;
 	register struct enamemem *tp;
 	char buf[sizeof("00:00:00:00:00:00")];
 
-	tp = lookup_emem(ep);
+	tp = lookup_emem(ipdo, ep);
 	if (tp->e_name)
 		return (tp->e_name);
 #ifdef USE_ETHER_NTOHOST
@@ -472,22 +478,23 @@ etheraddr_string(register const u_char *ep)
 }
 
 const char *
-linkaddr_string(const u_char *ep, const unsigned int len)
+linkaddr_string(struct netdissect_options *ndo,
+		const u_char *ep, const unsigned int len)
 {
 	register u_int i, j;
 	register char *cp;
 	register struct enamemem *tp;
 
 	if (len == 6)	/* XXX not totally correct... */
-		return etheraddr_string(ep);
+		return etheraddr_string(ndo, ep);
 	
-	tp = lookup_bytestring(ep, len);
+	tp = lookup_bytestring(ndo, ep, len);
 	if (tp->e_name)
 		return (tp->e_name);
 
 	tp->e_name = cp = (char *)malloc(len*3);
 	if (tp->e_name == NULL)
-		error("linkaddr_string: malloc");
+		error(ndo, "linkaddr_string: malloc");
 	if ((j = *ep >> 4) != 0)
 		*cp++ = hex[j];
 	*cp++ = hex[*ep++ & 0xf];
@@ -502,7 +509,8 @@ linkaddr_string(const u_char *ep, const unsigned int len)
 }
 
 const char *
-etherproto_string(u_short port)
+etherproto_string(struct netdissect_options *ipdo,
+		  u_short port)
 {
 	register char *cp;
 	register struct hnamemem *tp;
@@ -514,7 +522,7 @@ etherproto_string(u_short port)
 			return (tp->name);
 
 	tp->addr = i;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 
 	cp = buf;
 	NTOHS(port);
@@ -528,14 +536,15 @@ etherproto_string(u_short port)
 }
 
 const char *
-protoid_string(register const u_char *pi)
+protoid_string(struct netdissect_options *ipdo,
+	       register const u_char *pi)
 {
 	register u_int i, j;
 	register char *cp;
 	register struct protoidmem *tp;
 	char buf[sizeof("00:00:00:00:00")];
 
-	tp = lookup_protoid(pi);
+	tp = lookup_protoid(ipdo, pi);
 	if (tp->p_name)
 		return tp->p_name;
 
@@ -555,7 +564,8 @@ protoid_string(register const u_char *pi)
 }
 
 const char *
-llcsap_string(u_char sap)
+llcsap_string(struct netdissect_options *ipdo,
+	      u_char sap)
 {
 	register struct hnamemem *tp;
 	register u_int32_t i = sap;
@@ -566,7 +576,7 @@ llcsap_string(u_char sap)
 			return (tp->name);
 
 	tp->addr = i;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 
 	snprintf(buf, sizeof(buf), "sap %02x", sap & 0xff);
 	tp->name = strdup(buf);
@@ -574,19 +584,20 @@ llcsap_string(u_char sap)
 }
 
 const char *
-isonsap_string(const u_char *nsap)
+isonsap_string(struct netdissect_options *ipdo,
+	       const u_char *nsap)
 {
 	register u_int i, nlen = nsap[0];
 	register char *cp;
 	register struct enamemem *tp;
 
-	tp = lookup_nsap(nsap);
+	tp = lookup_nsap(ipdo, nsap);
 	if (tp->e_name)
 		return tp->e_name;
 
 	tp->e_name = cp = (char *)malloc(nlen * 2 + 2);
 	if (cp == NULL)
-		error("isonsap_string: malloc");
+		error(ipdo, "isonsap_string: malloc");
 
 	nsap++;
 	*cp++ = '/';
@@ -599,7 +610,8 @@ isonsap_string(const u_char *nsap)
 }
 
 const char *
-tcpport_string(u_short port)
+tcpport_string(struct netdissect_options *ipdo,
+	       u_short port)
 {
 	register struct hnamemem *tp;
 	register u_int32_t i = port;
@@ -610,7 +622,7 @@ tcpport_string(u_short port)
 			return (tp->name);
 
 	tp->addr = i;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 
 	(void)snprintf(buf, sizeof(buf), "%u", i);
 	tp->name = strdup(buf);
@@ -618,7 +630,8 @@ tcpport_string(u_short port)
 }
 
 const char *
-udpport_string(register u_short port)
+udpport_string(struct netdissect_options *ipdo,
+	       register u_short port)
 {
 	register struct hnamemem *tp;
 	register u_int32_t i = port;
@@ -629,7 +642,7 @@ udpport_string(register u_short port)
 			return (tp->name);
 
 	tp->addr = i;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 
 	(void)snprintf(buf, sizeof(buf), "%u", i);
 	tp->name = strdup(buf);
@@ -637,7 +650,7 @@ udpport_string(register u_short port)
 }
 
 static void
-init_servarray(void)
+init_servarray(struct netdissect_options *ipdo)
 {
 	struct servent *sv;
 	register struct hnamemem *table;
@@ -662,7 +675,7 @@ init_servarray(void)
 		} else
 			table->name = strdup(sv->s_name);
 		table->addr = port;
-		table->nxt = newhnamemem();
+		table->nxt = newhnamemem(ipdo);
 	}
 	endservent();
 }
@@ -674,7 +687,7 @@ extern struct eproto {
 } eproto_db[];
 
 static void
-init_eprotoarray(void)
+init_eprotoarray(struct netdissect_options *ipdo)
 {
 	register int i;
 	register struct hnamemem *table;
@@ -686,7 +699,7 @@ init_eprotoarray(void)
 			table = table->nxt;
 		table->name = eproto_db[i].s;
 		table->addr = ntohs(eproto_db[i].p);
-		table->nxt = newhnamemem();
+		table->nxt = newhnamemem(ipdo);
 	}
 }
 
@@ -707,7 +720,7 @@ static struct protoidlist {
  * types.
  */
 static void
-init_protoidarray(void)
+init_protoidarray(struct netdissect_options *ipdo)
 {
 	register int i;
 	register struct protoidmem *tp;
@@ -721,12 +734,12 @@ init_protoidarray(void)
 		u_short etype = htons(eproto_db[i].p);
 
 		memcpy((char *)&protoid[3], (char *)&etype, 2);
-		tp = lookup_protoid(protoid);
+		tp = lookup_protoid(ipdo, protoid);
 		tp->p_name = strdup(eproto_db[i].s);
 	}
 	/* Hardwire some SNAP proto ID names */
 	for (pl = protoidlist; pl->name != NULL; ++pl) {
-		tp = lookup_protoid(pl->protoid);
+		tp = lookup_protoid(ndo, pl->protoid);
 		/* Don't override existing name */
 		if (tp->p_name != NULL)
 			continue;
@@ -758,7 +771,7 @@ static struct etherlist {
  * translation, so we just pcap_next_etherent as a convenience.
  */
 static void
-init_etherarray(void)
+init_etherarray(struct netdissect_options *ipdo)
 {
 	register struct etherlist *el;
 	register struct enamemem *tp;
@@ -772,7 +785,7 @@ init_etherarray(void)
 	fp = fopen(PCAP_ETHERS_FILE, "r");
 	if (fp != NULL) {
 		while ((ep = pcap_next_etherent(fp)) != NULL) {
-			tp = lookup_emem(ep->addr);
+			tp = lookup_emem(ndo, ep->addr);
 			tp->e_name = strdup(ep->name);
 		}
 		(void)fclose(fp);
@@ -781,7 +794,7 @@ init_etherarray(void)
 
 	/* Hardwire some ethernet names */
 	for (el = etherlist; el->name != NULL; ++el) {
-		tp = lookup_emem(el->addr);
+		tp = lookup_emem(ipdo, el->addr);
 		/* Don't override existing name */
 		if (tp->e_name != NULL)
 			continue;
@@ -816,7 +829,7 @@ static struct tok llcsap_db[] = {
 };
 
 static void
-init_llcsaparray(void)
+init_llcsaparray(struct netdissect_options *ipdo)
 {
 	register int i;
 	register struct hnamemem *table;
@@ -827,7 +840,7 @@ init_llcsaparray(void)
 			table = table->nxt;
 		table->name = llcsap_db[i].s;
 		table->addr = llcsap_db[i].v;
-		table->nxt = newhnamemem();
+		table->nxt = newhnamemem(ipdo);
 	}
 }
 
@@ -838,7 +851,8 @@ init_llcsaparray(void)
  * of the local network.  mask is its subnet mask.
  */
 void
-init_addrtoname(u_int32_t localnet, u_int32_t mask)
+init_addrtoname(struct netdissect_options *ipdo,
+		u_int32_t localnet, u_int32_t mask)
 {
 	netmask = mask;
 	if (fflag) {
@@ -851,15 +865,16 @@ init_addrtoname(u_int32_t localnet, u_int32_t mask)
 		 */
 		return;
 
-	init_etherarray();
-	init_servarray();
-	init_eprotoarray();
-	init_llcsaparray();
-	init_protoidarray();
+	init_etherarray(ipdo);
+	init_servarray(ipdo);
+	init_eprotoarray(ipdo);
+	init_llcsaparray(ipdo);
+	init_protoidarray(ipdo);
 }
 
 const char *
-dnaddr_string(u_short dnaddr)
+dnaddr_string(struct netdissect_options *ipdo,
+	      u_short dnaddr)
 {
 	register struct hnamemem *tp;
 
@@ -869,18 +884,18 @@ dnaddr_string(u_short dnaddr)
 			return (tp->name);
 
 	tp->addr = dnaddr;
-	tp->nxt = newhnamemem();
+	tp->nxt = newhnamemem(ipdo);
 	if (nflag)
-		tp->name = dnnum_string(dnaddr);
+		tp->name = dnnum_string(ipdo, dnaddr);
 	else
-		tp->name = dnname_string(dnaddr);
+		tp->name = dnname_string(ipdo, dnaddr);
 
 	return(tp->name);
 }
 
 /* Return a zero'ed hnamemem struct and cuts down on calloc() overhead */
 struct hnamemem *
-newhnamemem(void)
+newhnamemem(struct netdissect_options *ipdo)
 {
 	register struct hnamemem *p;
 	static struct hnamemem *ptr = NULL;
@@ -890,7 +905,7 @@ newhnamemem(void)
 		num = 64;
 		ptr = (struct hnamemem *)calloc(num, sizeof (*ptr));
 		if (ptr == NULL)
-			error("newhnamemem: calloc");
+			error(ipdo, "newhnamemem: calloc");
 	}
 	--num;
 	p = ptr++;
@@ -900,7 +915,7 @@ newhnamemem(void)
 #ifdef INET6
 /* Return a zero'ed h6namemem struct and cuts down on calloc() overhead */
 struct h6namemem *
-newh6namemem(void)
+newh6namemem(struct netdissect_options *ndo)
 {
 	register struct h6namemem *p;
 	static struct h6namemem *ptr = NULL;
@@ -910,7 +925,7 @@ newh6namemem(void)
 		num = 64;
 		ptr = (struct h6namemem *)calloc(num, sizeof (*ptr));
 		if (ptr == NULL)
-			error("newh6namemem: calloc");
+			error(ndo, "newh6namemem: calloc");
 	}
 	--num;
 	p = ptr++;

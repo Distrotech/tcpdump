@@ -22,7 +22,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-arcnet.c,v 1.6 2001-09-17 21:57:54 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-arcnet.c,v 1.6.2.1 2001-10-01 04:02:20 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,11 +41,13 @@ struct rtentry;
 #include <stdio.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "arcnet.h"
 
-int arcnet_encap_print(u_char arctype, const u_char *p,
-    u_int length, u_int caplen);
+int arcnet_encap_print(struct netdissect_options *,
+		       u_char arctype, const u_char *p,
+		       u_int length, u_int caplen);
 
 struct tok arctypemap[] = {
 	{ ARCTYPE_IP_OLD,	"oldip" },
@@ -62,11 +64,13 @@ struct tok arctypemap[] = {
 };
 
 static inline void
-arcnet_print(const u_char *bp, u_int length, int phds, int flag, u_int seqid)
+arcnet_print(struct netdissect_options *ipdo,
+	     const u_char *bp, u_int length, int phds, int flag, u_int seqid)
 {
 	const struct arc_header *ap;
+	struct arctype_map *atmp;
 	const char *arctypename;
-
+	char typebuf[3];
 
 	ap = (const struct arc_header *)bp;
 
@@ -119,13 +123,14 @@ arcnet_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_int caplen = h->caplen;
 	u_int length = h->len;
 	const struct arc_header *ap;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	int phds, flag = 0, archdrlen = 0;
 	u_int seqid = 0;
 	u_char arc_type;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < ARC_HDRLEN) {
 		printf("[|arcnet]");
@@ -149,14 +154,14 @@ arcnet_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 
 	if (phds) {
 		if (caplen < ARC_HDRNEWLEN) {
-			arcnet_print(p, length, 0, 0, 0);
+			arcnet_print(ipdo, p, length, 0, 0, 0);
 			printf("[|phds]");
 			goto out;
 		}
 
 		if (ap->arc_flag == 0xff) {
 			if (caplen < ARC_HDRNEWLEN_EXC) {
-				arcnet_print(p, length, 0, 0, 0);
+				arcnet_print(ipdo, p, length, 0, 0, 0);
 				printf("[|phds extended]");
 				goto out;
 			}
@@ -172,7 +177,7 @@ arcnet_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 
 
 	if (eflag)
-		arcnet_print(p, length, phds, flag, seqid);
+		arcnet_print(ipdo, p, length, phds, flag, seqid);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -189,7 +194,7 @@ arcnet_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	if (phds && flag && (flag & 1) == 0)
 		goto out2;
 
-	if (!arcnet_encap_print(arc_type, p, length, caplen)) {
+	if (!arcnet_encap_print(ipdo, arc_type, p, length, caplen)) {
 		default_print(p, caplen);
 		goto out;
 	}
@@ -214,32 +219,33 @@ arcnet_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 
 
 int
-arcnet_encap_print(u_char arctype, const u_char *p,
-    u_int length, u_int caplen)
+arcnet_encap_print(struct netdissect_options *ipdo,
+		   u_char arctype, const u_char *p,
+		   u_int length, u_int caplen)
 {
 	switch (arctype) {
 
 	case ARCTYPE_IP_OLD:
 	case ARCTYPE_IP:
-		ip_print(p, length);
+		ip_print(ipdo, p, length);
 		return (1);
 
 #ifdef INET6
 	case ARCTYPE_INET6:
-		ip6_print(p, length);
+		ip6_print(ipdo, p, length);
 		return (1);
 #endif /*INET6*/
 
 	case ARCTYPE_ARP_OLD:
 	case ARCTYPE_ARP:
 	case ARCTYPE_REVARP:
-		arp_print(p, length, caplen);
+		arp_print(ipdo, p, length, caplen);
 		return (1);
 
 	case ARCTYPE_ATALK:	/* XXX was this ever used? */
 		if (vflag)
 			fputs("et1 ", stdout);
-		atalk_print(p, length);
+		atalk_print(ipdo, p, length);
 		return (1);
 
 	default:

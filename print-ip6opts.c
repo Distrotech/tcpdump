@@ -33,7 +33,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/print-ip6opts.c,v 1.9 2001-05-09 02:47:26 itojun Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-ip6opts.c,v 1.9.2.1 2001-10-01 04:02:34 mcr Exp $";
 #endif
 
 #ifdef INET6
@@ -47,6 +47,7 @@ static const char rcsid[] =
 
 #include "ip6.h"
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -69,10 +70,12 @@ static const char rcsid[] =
 #define IP6SOPT_UI            0x2
 #define IP6SOPT_UI_MINLEN       4
 
-static void ip6_sopt_print(const u_char *, int);
+static void ip6_sopt_print(struct netdissect_options *ndo,
+			   const u_char *, int);
 
 static void
-ip6_sopt_print(const u_char *bp, int len)
+ip6_sopt_print(struct netdissect_options *ndo,
+	       const u_char *bp, int len)
 {
     int i;
     int optlen;
@@ -130,7 +133,8 @@ trunc:
 }
 
 void
-ip6_opt_print(const u_char *bp, int len)
+ip6_opt_print(struct netdissect_options *ndo,
+	      const u_char *bp, int len)
 {
     int i;
     int optlen;
@@ -191,8 +195,9 @@ ip6_opt_print(const u_char *bp, int len)
 	    }
 	    printf("(homeaddr: %s", ip6addr_string(&bp[i + 2]));
             if (bp[i + 1] > IP6OPT_HOMEADDR_MINLEN - 2) {
-		ip6_sopt_print(&bp[i + IP6OPT_HOMEADDR_MINLEN],
-		    (optlen - IP6OPT_HOMEADDR_MINLEN));
+		ip6_sopt_print(ndo,
+			       &bp[i + IP6OPT_HOMEADDR_MINLEN],
+			       (optlen - IP6OPT_HOMEADDR_MINLEN));
 	    }
             printf(")");
 	    break;
@@ -223,8 +228,9 @@ ip6_opt_print(const u_char *bp, int len)
 		(u_int32_t)ntohs(*(u_int32_t *)&bp[i + 8]));
 
 	    if (bp[i + 1] > IP6OPT_BU_MINLEN - 2) {
-		ip6_sopt_print(&bp[i + IP6OPT_BU_MINLEN],
-		    (optlen - IP6OPT_BU_MINLEN));
+		ip6_sopt_print(ndo,
+			       &bp[i + IP6OPT_BU_MINLEN],
+			       (optlen - IP6OPT_BU_MINLEN));
 	    }
 	    printf(")");
 	    break;
@@ -247,8 +253,9 @@ ip6_opt_print(const u_char *bp, int len)
 		(u_int32_t)ntohs(*(u_int32_t *)&bp[i + 11]));
 
 	    if (bp[i + 1] > IP6OPT_BA_MINLEN - 2) {
-		ip6_sopt_print(&bp[i + IP6OPT_BA_MINLEN],
-		    (optlen - IP6OPT_BA_MINLEN));
+		ip6_sopt_print(ndo,
+			       &bp[i + IP6OPT_BA_MINLEN],
+			       (optlen - IP6OPT_BA_MINLEN));
 	    }
             printf(")");
 	    break;
@@ -259,8 +266,9 @@ ip6_opt_print(const u_char *bp, int len)
 	    }
             printf("(br");
             if (bp[i + 1] > IP6OPT_BR_MINLEN - 2) {
-		ip6_sopt_print(&bp[i + IP6OPT_BR_MINLEN],
-		    (optlen - IP6OPT_BR_MINLEN));
+		ip6_sopt_print(ndo,
+			       &bp[i + IP6OPT_BR_MINLEN],
+			       (optlen - IP6OPT_BR_MINLEN));
 	    }
             printf(")");
 	    break;
@@ -284,7 +292,8 @@ trunc:
 }
 
 int
-hbhopt_print(register const u_char *bp)
+hbhopt_print(struct netdissect_options *ndo,
+	     register const u_char *bp)
 {
     const struct ip6_hbh *dp = (struct ip6_hbh *)bp;
     register const u_char *ep;
@@ -297,7 +306,8 @@ hbhopt_print(register const u_char *bp)
     TCHECK2(*dp, hbhlen);
     printf("HBH ");
     if (vflag)
-	ip6_opt_print((const u_char *)dp + sizeof(*dp), hbhlen - sizeof(*dp));
+	ip6_opt_print(ndo,
+		      (const u_char *)dp + sizeof(*dp), hbhlen - sizeof(*dp));
 
     return(hbhlen);
 
@@ -307,7 +317,8 @@ hbhopt_print(register const u_char *bp)
 }
 
 int
-dstopt_print(register const u_char *bp)
+dstopt_print(struct netdissect_options *ndo,
+	     register const u_char *bp)
 {
     const struct ip6_dest *dp = (struct ip6_dest *)bp;
     register const u_char *ep;
@@ -320,8 +331,9 @@ dstopt_print(register const u_char *bp)
     TCHECK2(*dp, dstoptlen);
     printf("DSTOPT ");
     if (vflag) {
-	ip6_opt_print((const u_char *)dp + sizeof(*dp),
-	    dstoptlen - sizeof(*dp));
+	ip6_opt_print(ndo,
+		      (const u_char *)dp + sizeof(*dp),
+		      dstoptlen - sizeof(*dp));
     }
 
     return(dstoptlen);

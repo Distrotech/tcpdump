@@ -26,7 +26,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-isoclns.c,v 1.26 2001-09-17 21:58:04 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-isoclns.c,v 1.26.2.1 2001-10-01 04:02:36 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -165,8 +166,8 @@ static struct tok isis_nlpid_values[] = {
 #define ISIS_PTP_ADJ_DOWN 2
 
 static int osi_cksum(const u_char *, u_int, u_char *);
-static void esis_print(const u_char *, u_int);
-static int isis_print(const u_char *, u_int);
+static void esis_print(struct netdissect_options *, const u_char *, u_int);
+static int isis_print(struct netdissect_options *, const u_char *, u_int);
 
 
 static struct tok isis_ptp_adjancey_values[] = {
@@ -264,8 +265,9 @@ struct isis_tlv_lsp {
 #define ISIS_CSNP_HEADER_SIZE (sizeof(struct isis_csnp_header))
 #define ISIS_PSNP_HEADER_SIZE (sizeof(struct isis_psnp_header))
 
-void isoclns_print(const u_char *p, u_int length, u_int caplen,
-	      const u_char *esrc, const u_char *edst)
+void isoclns_print(struct netdissect_options *ndo,
+		   const u_char *p, u_int length, u_int caplen,
+		   const u_char *esrc, const u_char *edst)
 {
 	u_char pdu_type;
 	const struct isis_common_header *header;
@@ -277,8 +279,8 @@ void isoclns_print(const u_char *p, u_int length, u_int caplen,
 		printf("[|iso-clns] ");
 		if (!eflag && esrc != NULL && edst != NULL)
 			printf("%s > %s",
-			       etheraddr_string(esrc),
-			       etheraddr_string(edst));
+			       etheraddr_string(ipdo,esrc),
+			       etheraddr_string(ipdo,edst));
 		return;
 	}
 
@@ -288,26 +290,26 @@ void isoclns_print(const u_char *p, u_int length, u_int caplen,
 		(void)printf("CLNS(%d)", length);
 		if (!eflag && esrc != NULL && edst != NULL)
 			(void)printf(", %s > %s",
-				     etheraddr_string(esrc),
-				     etheraddr_string(edst));
+				     etheraddr_string(ipdo, esrc),
+				     etheraddr_string(ipdo, edst));
 		break;
 
 	case NLPID_ESIS:
 		(void)printf("ESIS");
 		if (!eflag && esrc != NULL && edst != NULL)
 			(void)printf(", %s > %s",
-				     etheraddr_string(esrc),
-				     etheraddr_string(edst));
-		esis_print(p, length);
+				     etheraddr_string(ipdo, esrc),
+				     etheraddr_string(ipdo, edst));
+		esis_print(ipdo, p, length);
 		return;
 
 	case NLPID_ISIS:
 		(void)printf("ISIS(%d)", length);
 		if (!eflag && esrc != NULL && edst != NULL)
 			(void)printf(", %s > %s",
-			     etheraddr_string(esrc),
-			     etheraddr_string(edst));
-		if (!isis_print(p, length))
+			     etheraddr_string(ipdo, esrc),
+			     etheraddr_string(ipdo, edst));
+		if (!isis_print(ipdo, p, length))
 		    default_print_unaligned(p, caplen);
 		break;
 
@@ -315,16 +317,16 @@ void isoclns_print(const u_char *p, u_int length, u_int caplen,
 		(void)printf("ISO NULLNS(%d)", length);
 		if (!eflag && esrc != NULL && edst != NULL)
 			(void)printf(", %s > %s",
-				     etheraddr_string(esrc),
-				     etheraddr_string(edst));
+				     etheraddr_string(ipdo, esrc),
+				     etheraddr_string(ipdo, edst));
 		break;
 
 	default:
 		(void)printf("CLNS %02x(%d)", p[0], length);
 		if (!eflag && esrc != NULL && edst != NULL)
 			(void)printf(", %s > %s",
-				     etheraddr_string(esrc),
-				     etheraddr_string(edst));
+				     etheraddr_string(ipdo, esrc),
+				     etheraddr_string(ipdo, edst));
 		if (caplen > 1)
 			default_print_unaligned(p, caplen);
 		break;
@@ -344,7 +346,8 @@ struct esis_hdr {
 };
 
 static void
-esis_print(const u_char *p, u_int length)
+esis_print(struct netdissect_options *ipdo,
+	   const u_char *p, u_int length)
 {
 	const u_char *ep;
 	u_int li = p[1];
@@ -416,7 +419,7 @@ esis_print(const u_char *p, u_int length)
 		dst = p; p += *p + 1;
 		if (p > snapend)
 			return;
-		printf("\n\t\t\t %s", isonsap_string(dst));
+		printf("\n\t\t\t %s", isonsap_string(ipdo, dst));
 		snpa = p; p += *p + 1;
 		is = p;   p += *p + 1;
 		if (p > snapend)
@@ -426,9 +429,9 @@ esis_print(const u_char *p, u_int length)
 			return;
 		}
 		if (is[0] == 0)
-			printf(" > %s", etheraddr_string(&snpa[1]));
+			printf(" > %s", etheraddr_string(ipdo,&snpa[1]));
 		else
-			printf(" > %s", isonsap_string(is));
+			printf(" > %s", isonsap_string(ipdo, is));
 		li = ep - p;
 		break;
 	}
@@ -448,7 +451,7 @@ esis_print(const u_char *p, u_int length)
 		if (p > snapend)
 			return;
 		if (!qflag)
-			printf("\n\t\t\t %s", isonsap_string(is));
+			printf("\n\t\t\t %s", isonsap_string(ipdo, is));
 		li = ep - p;
 		break;
 	}
@@ -637,10 +640,11 @@ isis_print_tlv_ip_reach (const u_char *cp, int length)
  * Decode IS-IS packets.  Return 0 on error.
  */
 
-static int isis_print (const u_char *p, u_int length)
+static int
+isis_print (struct netdissect_options *ipdo,
+	    const u_char *p, u_int length)
 {
     const struct isis_common_header *header;
-
     const struct isis_iih_lan_header *header_iih_lan;
     const struct isis_iih_ptp_header *header_iih_ptp;
     const struct isis_lsp_header *header_lsp;

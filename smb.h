@@ -1,4 +1,4 @@
-/* @(#) $Header: /tcpdump/master/tcpdump/smb.h,v 1.6 2001-09-17 21:58:05 fenner Exp $ (LBL) */
+/* @(#) $Header: /tcpdump/master/tcpdump/smb.h,v 1.6.2.1 2001-10-01 04:02:59 mcr Exp $ (LBL) */
 /* 
  * Copyright (C) Andrew Tridgell 1995-1999
  *
@@ -145,4 +145,5 @@
 #define PTR_DIFF(p1, p2) ((size_t)(((char *)(p1)) - (char *)(p2)))
 
 /* some protos */
-const u_char *smb_fdata(const u_char *, const char *, const u_char *);
+const u_char *smb_fdata(struct netdissect_options *,
+			const u_char *, const char *, const u_char *);

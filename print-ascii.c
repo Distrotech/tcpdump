@@ -42,12 +42,13 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/print-ascii.c,v 1.6 2000-01-29 16:47:46 itojun Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-ascii.c,v 1.6.2.1 2001-10-01 04:02:21 mcr Exp $";
 #endif
 #include <stdio.h>
 #include <sys/types.h>
 #include <ctype.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 
 #define HEXDUMP_BYTES_PER_LINE 16
@@ -57,7 +58,8 @@ static const char rcsid[] =
 		(HEXDUMP_HEXSTUFF_PER_SHORT * HEXDUMP_SHORTS_PER_LINE)
      
 void
-ascii_print_with_offset(register const u_char *cp, register u_int length,
+ascii_print_with_offset(struct netdissect_options *ipdo,
+			register const u_char *cp, register u_int length,
 			register u_int oset)
 {
 	register u_int i;
@@ -103,16 +105,18 @@ ascii_print_with_offset(register const u_char *cp, register u_int length,
 }
 
 void
-ascii_print(register const u_char *cp, register u_int length)
+ascii_print(struct netdissect_options *ipdo,
+	    register const u_char *cp, register u_int length)
 {
-	ascii_print_with_offset(cp, length, 0);
+	ascii_print_with_offset(ipdo, cp, length, 0);
 }
 	
 /*
  * telnet_print() wants this.  It is essentially default_print_unaligned()
  */
 void
-hex_print_with_offset(register const u_char *cp, register u_int length,
+hex_print_with_offset(struct netdissect_options *ipdo,
+		      register const u_char *cp, register u_int length,
 		      register u_int oset)
 {
 	register u_int i, s;
@@ -139,9 +143,10 @@ hex_print_with_offset(register const u_char *cp, register u_int length,
  * just for completeness
  */
 void
-hex_print(register const u_char *cp, register u_int length)
+hex_print(struct netdissect_options *ipdo,
+	  register const u_char *cp, register u_int length)
 {
-	hex_print_with_offset(cp, length, 0);
+	hex_print_with_offset(ipdo, cp, length, 0);
 }
 
 #ifdef MAIN

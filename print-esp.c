@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19 2001-08-20 17:52:38 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19.2.1 2001-10-01 04:02:28 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -57,11 +57,14 @@ static const char rcsid[] =
 #include "ip6.h"
 #endif
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 int
-esp_print(register const u_char *bp, register const u_char *bp2, int *nhdr, int *padlen)
+esp_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, register const u_char *bp2,
+	  int *nhdr, int *padlen)
 {
 	register const struct esp *esp;
 	register const u_char *ep;

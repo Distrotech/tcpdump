@@ -35,7 +35,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-"@(#) $Header: /tcpdump/master/tcpdump/print-sctp.c,v 1.5 2001-08-01 03:31:55 guy Exp $ (NETLAB/PEL)";
+"@(#) $Header: /tcpdump/master/tcpdump/print-sctp.c,v 1.5.2.1 2001-10-01 04:02:50 mcr Exp $ (NETLAB/PEL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -56,6 +56,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -64,7 +65,8 @@ static const char rcsid[] =
 #include "ip6.h"
 #endif
 
-void sctp_print(const u_char *bp,        /* beginning of sctp packet */
+void sctp_print(struct netdissect_options *ndo,
+		const u_char *bp,        /* beginning of sctp packet */
 		const u_char *bp2,       /* beginning of enclosing */
 		u_int sctpPacketLength)  /* ip packet */
 { 

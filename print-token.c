@@ -25,7 +25,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-token.c,v 1.13 2001-09-18 15:46:37 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-token.c,v 1.13.2.1 2001-10-01 04:02:56 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -61,13 +62,14 @@ extract_token_addrs(const struct token_header *trp, char *fsrc, char *fdst)
  * Print the TR MAC header
  */
 static inline void
-token_print(register const struct token_header *trp, register u_int length,
+token_print(struct netdissect_options *ipdo,
+	    register const struct token_header *trp, register u_int length,
 	   register const u_char *fsrc, register const u_char *fdst)
 {
 	const char *srcname, *dstname;
 
-	srcname = etheraddr_string(fsrc);
-	dstname = etheraddr_string(fdst);
+	srcname = etheraddr_string(ipdo, fsrc);
+	dstname = etheraddr_string(ipdo, fdst);
 
 	if (vflag)
 		(void) printf("%02x %02x %s %s %d: ",
@@ -116,11 +118,12 @@ token_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_short extracted_ethertype;
 	struct ether_header ehdr;
 	u_int route_len = 0, seg;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	trp = (const struct token_header *)p;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < TOKEN_HDRLEN) {
 		printf("[|token-ring]");
@@ -150,7 +153,7 @@ token_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		*ESRC(&ehdr) &= 0x7f;
 
 		if (eflag)
-			token_print(trp, length, ESRC(&ehdr), EDST(&ehdr));
+			token_print(ipdo,trp, length, ESRC(&ehdr),EDST(&ehdr));
 
 		route_len = RIF_LENGTH(trp);
 		if (vflag) {
@@ -169,7 +172,7 @@ token_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		printf(" (%s) ", largest_frame[LARGEST_FRAME(trp)]);
 	} else {
 		if (eflag)
-			token_print(trp, length, ESRC(&ehdr), EDST(&ehdr));
+			token_print(ipdo,trp,length, ESRC(&ehdr), EDST(&ehdr));
 	}
 
 	/* Skip over token ring MAC header and routing information */
@@ -181,16 +184,16 @@ token_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	extracted_ethertype = 0;
 	if (FRAME_TYPE(trp) == TOKEN_FC_LLC) {
 		/* Try to print the LLC-layer header & higher layers */
-		if (llc_print(p, length, caplen, ESRC(&ehdr), EDST(&ehdr),
+		if (llc_print(ipdo,p, length, caplen, ESRC(&ehdr), EDST(&ehdr),
 		    &extracted_ethertype) == 0) {
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				token_print(trp,
+				token_print(ipdo, trp,
 				    length + TOKEN_HDRLEN + route_len,
 				    ESRC(&ehdr), EDST(&ehdr));
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			etherproto_string(htons(extracted_ethertype)));
+			etherproto_string(ipdo,htons(extracted_ethertype)));
 			}
 			if (!xflag && !qflag)
 				default_print(p, caplen);
@@ -199,7 +202,7 @@ token_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		/* Some kinds of TR packet we cannot handle intelligently */
 		/* XXX - dissect MAC packets if frame type is 0 */
 		if (!eflag)
-			token_print(trp, length + TOKEN_HDRLEN + route_len,
+			token_print(ipdo,trp, length + TOKEN_HDRLEN + route_len,
 			    ESRC(&ehdr), EDST(&ehdr));
 		if (!xflag && !qflag)
 			default_print(p, caplen);

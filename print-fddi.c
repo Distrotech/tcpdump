@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-fddi.c,v 1.52 2001-09-18 15:46:36 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-fddi.c,v 1.52.2.1 2001-10-01 04:02:29 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -219,13 +220,14 @@ extract_fddi_addrs(const struct fddi_header *fddip, char *fsrc, char *fdst)
  * Print the FDDI MAC header
  */
 static inline void
-fddi_print(register const struct fddi_header *fddip, register u_int length,
+fddi_print(struct netdissect_options *ipdo,
+	   register const struct fddi_header *fddip, register u_int length,
 	   register const u_char *fsrc, register const u_char *fdst)
 {
 	const char *srcname, *dstname;
 
-	srcname = etheraddr_string(fsrc);
-	dstname = etheraddr_string(fdst);
+	srcname = etheraddr_string(ipdo, fsrc);
+	dstname = etheraddr_string(ipdo, fdst);
 
 	if (vflag)
 		(void) printf("%02x %s %s %d: ",
@@ -253,7 +255,7 @@ fddi_smt_print(const u_char *p, u_int length)
  * is the number of bytes actually captured.
  */
 void
-fddi_if_print(u_char *pcap, const struct pcap_pkthdr *h,
+fddi_if_print(u_char *user, const struct pcap_pkthdr *h,
 	      register const u_char *p)
 {
 	u_int caplen = h->caplen;
@@ -261,9 +263,10 @@ fddi_if_print(u_char *pcap, const struct pcap_pkthdr *h,
 	const struct fddi_header *fddip = (const struct fddi_header *)p;
 	struct ether_header ehdr;
 	u_short extracted_ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < FDDI_HDRLEN) {
 		printf("[|fddi]");
@@ -288,7 +291,7 @@ fddi_if_print(u_char *pcap, const struct pcap_pkthdr *h,
 	packetp = (u_char *)&ehdr;
 
 	if (eflag)
-		fddi_print(fddip, length, ESRC(&ehdr), EDST(&ehdr));
+		fddi_print(ipdo, fddip, length, ESRC(&ehdr), EDST(&ehdr));
 
 	/* Skip over FDDI MAC header */
 	length -= FDDI_HDRLEN;
@@ -299,18 +302,19 @@ fddi_if_print(u_char *pcap, const struct pcap_pkthdr *h,
 	extracted_ethertype = 0;
 	if ((fddip->fddi_fc & FDDIFC_CLFF) == FDDIFC_LLC_ASYNC) {
 		/* Try to print the LLC-layer header & higher layers */
-		if (llc_print(p, length, caplen, ESRC(&ehdr), EDST(&ehdr),
-		    &extracted_ethertype) == 0) {
+		if (llc_print(ipdo, p, length, caplen,
+			      ESRC(&ehdr), EDST(&ehdr),
+			      &extracted_ethertype) == 0) {
 			/*
 			 * Some kinds of LLC packet we cannot
 			 * handle intelligently
 			 */
 			if (!eflag)
-				fddi_print(fddip, length + FDDI_HDRLEN,
-				    ESRC(&ehdr), EDST(&ehdr));
+				fddi_print(ipdo, fddip, length + FDDI_HDRLEN,
+					   ESRC(&ehdr), EDST(&ehdr));
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			etherproto_string(htons(extracted_ethertype)));
+			etherproto_string(ipdo, htons(extracted_ethertype)));
 			}
 			if (!xflag && !qflag)
 				default_print(p, caplen);
@@ -320,8 +324,8 @@ fddi_if_print(u_char *pcap, const struct pcap_pkthdr *h,
 	else {
 		/* Some kinds of FDDI packet we cannot handle intelligently */
 		if (!eflag)
-			fddi_print(fddip, length + FDDI_HDRLEN, ESRC(&ehdr),
-			    EDST(&ehdr));
+			fddi_print(ipdo, fddip, length + FDDI_HDRLEN,
+				   ESRC(&ehdr), EDST(&ehdr));
 		if (!xflag && !qflag)
 			default_print(p, caplen);
 	}

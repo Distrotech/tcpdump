@@ -29,7 +29,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-lwres.c,v 1.5 2001-06-26 06:19:05 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-lwres.c,v 1.5.2.1 2001-10-01 04:02:40 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -46,6 +46,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"                    /* must come after interface.h */
@@ -190,13 +191,13 @@ struct tok opcode[] = {
 extern struct tok ns_type2str[];
 extern struct tok ns_class2str[];
 
-static int lwres_printname(size_t, const char *);
-static int lwres_printnamelen(const char *);
-static int lwres_printbinlen(const char *);
-static int lwres_printaddr(lwres_addr_t *);
+static int lwres_printname(struct netdissect_options *, size_t, const char *);
+static int lwres_printnamelen(struct netdissect_options *, const char *);
+static int lwres_printbinlen(struct netdissect_options *, const char *);
+static int lwres_printaddr(struct netdissect_options *, lwres_addr_t *);
 
 static int
-lwres_printname(size_t l, const char *p0)
+lwres_printname(struct netdissect_options *ipdo, size_t l, const char *p0)
 {
 	const char *p;
 	int i;
@@ -218,7 +219,7 @@ lwres_printname(size_t l, const char *p0)
 }
 
 static int
-lwres_printnamelen(const char *p)
+lwres_printnamelen(struct netdissect_options *ipdo, const char *p)
 {
 	u_int16_t l;
 	int advance;
@@ -226,7 +227,7 @@ lwres_printnamelen(const char *p)
 	if (p + 2 > (const char *)snapend)
 		goto trunc;
 	l = EXTRACT_16BITS(p);
-	advance = lwres_printname(l, p + 2);
+	advance = lwres_printname(ipdo, l, p + 2);
 	if (advance < 0)
 		goto trunc;
 	return 2 + advance;
@@ -236,7 +237,7 @@ lwres_printnamelen(const char *p)
 }
 
 static int
-lwres_printbinlen(const char *p0)
+lwres_printbinlen(struct netdissect_options *ipdo, const char *p0)
 {
 	const char *p;
 	u_int16_t l;
@@ -258,7 +259,7 @@ lwres_printbinlen(const char *p0)
 }
 
 static int
-lwres_printaddr(lwres_addr_t *ap)
+lwres_printaddr(struct netdissect_options *ipdo, lwres_addr_t *ap)
 {
 	u_int16_t l;
 	const char *p;
@@ -295,7 +296,8 @@ lwres_printaddr(lwres_addr_t *ap)
 }
 
 void
-lwres_print(register const u_char *bp, u_int length)
+lwres_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, u_int length)
 {
 	const struct lwres_lwpacket *np;
 	u_int32_t v;
@@ -388,7 +390,7 @@ lwres_print(register const u_char *bp, u_int length)
 			if (v & ~(LWRES_ADDRTYPE_V4 | LWRES_ADDRTYPE_V6))
 				printf("[0x%x]", v);
 
-			advance = lwres_printname(l, s);
+			advance = lwres_printname(ipdo, l, s);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -405,7 +407,7 @@ lwres_print(register const u_char *bp, u_int length)
 
 			s = (const char *)&gnba->addr;
 
-			advance = lwres_printaddr(&gnba->addr);
+			advance = lwres_printaddr(ipdo, &gnba->addr);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -432,7 +434,7 @@ lwres_print(register const u_char *bp, u_int length)
 			    sizeof(grbn->namelen);
 			l = ntohs(gabn->namelen);
 
-			advance = lwres_printname(l, s);
+			advance = lwres_printname(ipdo, l, s);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -475,7 +477,7 @@ lwres_print(register const u_char *bp, u_int length)
 			printf(" %u/%u", ntohs(gabn->naliases),
 			    ntohs(gabn->naddrs));
 
-			advance = lwres_printname(l, s);
+			advance = lwres_printname(ipdo, l, s);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -483,7 +485,7 @@ lwres_print(register const u_char *bp, u_int length)
 			/* aliases */
 			na = ntohs(gabn->naliases);
 			for (i = 0; i < na; i++) {
-				advance = lwres_printnamelen(s);
+				advance = lwres_printnamelen(ipdo, s);
 				if (advance < 0)
 					goto trunc;
 				s += advance;
@@ -492,7 +494,8 @@ lwres_print(register const u_char *bp, u_int length)
 			/* addrs */
 			na = ntohs(gabn->naddrs);
 			for (i = 0; i < na; i++) {
-				advance = lwres_printaddr((lwres_addr_t *)s);
+				advance = lwres_printaddr(ipdo,
+							  (lwres_addr_t *)s);
 				if (advance < 0)
 					goto trunc;
 				s += advance;
@@ -514,7 +517,7 @@ lwres_print(register const u_char *bp, u_int length)
 
 			printf(" %u", ntohs(gnba->naliases));
 
-			advance = lwres_printname(l, s);
+			advance = lwres_printname(ipdo, l, s);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -522,7 +525,7 @@ lwres_print(register const u_char *bp, u_int length)
 			/* aliases */
 			na = ntohs(gnba->naliases);
 			for (i = 0; i < na; i++) {
-				advance = lwres_printnamelen(s);
+				advance = lwres_printnamelen(ipdo, s);
 				if (advance < 0)
 					goto trunc;
 				s += advance;
@@ -552,7 +555,7 @@ lwres_print(register const u_char *bp, u_int length)
 			/* XXX grbn points to packed struct */
 			s = (const char *)&grbn->nsigs+ sizeof(grbn->nsigs);
 
-			advance = lwres_printnamelen(s);
+			advance = lwres_printnamelen(ipdo, s);
 			if (advance < 0)
 				goto trunc;
 			s += advance;
@@ -561,7 +564,7 @@ lwres_print(register const u_char *bp, u_int length)
 			na = ntohs(grbn->nrdatas);
 			for (i = 0; i < na; i++) {
 				/* XXX should decode resource data */
-				advance = lwres_printbinlen(s);
+				advance = lwres_printbinlen(ipdo, s);
 				if (advance < 0)
 					goto trunc;
 				s += advance;
@@ -571,7 +574,7 @@ lwres_print(register const u_char *bp, u_int length)
 			na = ntohs(grbn->nsigs);
 			for (i = 0; i < na; i++) {
 				/* XXX how should we print it? */
-				advance = lwres_printbinlen(s);
+				advance = lwres_printbinlen(ipdo, s);
 				if (advance < 0)
 					goto trunc;
 				s += advance;

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-domain.c,v 1.77 2001-09-17 21:58:00 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-domain.c,v 1.77.2.1 2001-10-01 04:02:27 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"                    /* must come after interface.h */
@@ -57,7 +58,8 @@ static const char *ns_resp[] = {
 
 /* skip over a domain name */
 static const u_char *
-ns_nskip(register const u_char *cp, register const u_char *bp)
+ns_nskip(struct netdissect_options *ipdo,
+	 register const u_char *cp, register const u_char *bp)
 {
 	register u_char i;
 
@@ -88,7 +90,8 @@ ns_nskip(register const u_char *cp, register const u_char *bp)
 
 /* print a <domain-name> */
 static const u_char *
-blabel_print(const u_char *cp)
+blabel_print(struct netdissect_options *ipdo,
+	     const u_char *cp)
 {
 	int bitlen, slen, b;
 	int truncated = 0;
@@ -124,7 +127,8 @@ blabel_print(const u_char *cp)
 }
 
 static int
-labellen(const u_char *cp)
+labellen(struct netdissect_options *ipdo,
+	 const u_char *cp)
 {
 	register u_int i;
 
@@ -146,7 +150,8 @@ labellen(const u_char *cp)
 }
 
 static const u_char *
-ns_nprint(register const u_char *cp, register const u_char *bp)
+ns_nprint(struct netdissect_options *ipdo,
+	  register const u_char *cp, register const u_char *bp)
 {
 	register u_int i, l;
 	register const u_char *rp = NULL;
@@ -155,7 +160,7 @@ ns_nprint(register const u_char *cp, register const u_char *bp)
 	int elt;
 	int data_size = snapend - bp;
 
-	if ((l = labellen(cp)) < 0)
+	if ((l = labellen(ipdo, cp)) < 0)
 		return(NULL);
 	if (!TTEST2(*cp, 1))
 		return(NULL);
@@ -175,7 +180,7 @@ ns_nprint(register const u_char *cp, register const u_char *bp)
 				if (!TTEST2(*cp, 1))
 					return(NULL);
 				cp = bp + (((i << 8) | *cp) & 0x3fff);
-				if ((l = labellen(cp)) < 0)
+				if ((l = labellen(ipdo, cp)) < 0)
 					return(NULL);
 				if (!TTEST2(*cp, 1))
 					return(NULL);
@@ -198,7 +203,7 @@ ns_nprint(register const u_char *cp, register const u_char *bp)
 				elt = (i & ~INDIR_MASK);
 				switch(elt) {
 				case EDNS0_ELT_BITLABEL:
-					if (blabel_print(cp) == NULL)
+					if (blabel_print(ipdo,cp) == NULL)
 						return (NULL);
 					break;
 				default:
@@ -214,7 +219,7 @@ ns_nprint(register const u_char *cp, register const u_char *bp)
 			cp += l;
 			chars_processed += l;
 			putchar('.');
-			if ((l = labellen(cp)) < 0)
+			if ((l = labellen(ipdo, cp)) < 0)
 				return(NULL);
 			if (!TTEST2(*cp, 1))
 				return(NULL);
@@ -230,7 +235,8 @@ ns_nprint(register const u_char *cp, register const u_char *bp)
 
 /* print a <character-string> */
 static const u_char *
-ns_cprint(register const u_char *cp, register const u_char *bp)
+ns_cprint(struct netdissect_options *ipdo,
+	  register const u_char *cp, register const u_char *bp)
 {
 	register u_int i;
 
@@ -306,12 +312,13 @@ struct tok ns_class2str[] = {
 
 /* print a query */
 static const u_char *
-ns_qprint(register const u_char *cp, register const u_char *bp)
+ns_qprint(struct netdissect_options *ipdo,
+	  register const u_char *cp, register const u_char *bp)
 {
 	register const u_char *np = cp;
 	register u_int i;
 
-	cp = ns_nskip(cp, bp);
+	cp = ns_nskip(ipdo, cp, bp);
 
 	if (cp == NULL || !TTEST2(*cp, 4))
 		return(NULL);
@@ -326,13 +333,14 @@ ns_qprint(register const u_char *cp, register const u_char *bp)
 		printf(" %s", tok2str(ns_class2str, "(Class %d)", i));
 
 	fputs("? ", stdout);
-	cp = ns_nprint(np, bp);
+	cp = ns_nprint(ipdo, np, bp);
 	return(cp ? cp + 4 : NULL);
 }
 
 /* print a reply */
 static const u_char *
-ns_rprint(register const u_char *cp, register const u_char *bp)
+ns_rprint(struct netdissect_options *ipdo,
+	  register const u_char *cp, register const u_char *bp)
 {
 	register u_int class;
 	register u_short typ, len;
@@ -340,10 +348,10 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 
 	if (vflag) {
 		putchar(' ');
-		if ((cp = ns_nprint(cp, bp)) == NULL)
+		if ((cp = ns_nprint(ipdo, cp, bp)) == NULL)
 			return NULL;
 	} else
-		cp = ns_nskip(cp, bp);
+		cp = ns_nskip(ipdo, cp, bp);
 
 	if (cp == NULL || !TTEST2(*cp, 10))
 		return (snapend);
@@ -382,7 +390,7 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 	case T_DNAME:
 #endif
 		putchar(' ');
-		if (ns_nprint(cp, bp) == NULL)
+		if (ns_nprint(ipdo, cp, bp) == NULL)
 			return(NULL);
 		break;
 
@@ -390,10 +398,10 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 		if (!vflag)
 			break;
 		putchar(' ');
-		if ((cp = ns_nprint(cp, bp)) == NULL)
+		if ((cp = ns_nprint(ipdo, cp, bp)) == NULL)
 			return(NULL);
 		putchar(' ');
-		if ((cp = ns_nprint(cp, bp)) == NULL)
+		if ((cp = ns_nprint(ipdo, cp, bp)) == NULL)
 			return(NULL);
 		if (!TTEST2(*cp, 5 * 4))
 			return(NULL);
@@ -412,14 +420,14 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 		putchar(' ');
 		if (!TTEST2(*cp, 2))
 			return(NULL);
-		if (ns_nprint(cp + 2, bp) == NULL)
+		if (ns_nprint(ipdo, cp + 2, bp) == NULL)
 			return(NULL);
 		printf(" %d", EXTRACT_16BITS(cp));
 		break;
 
 	case T_TXT:
 		putchar(' ');
-		(void)ns_cprint(cp, bp);
+		(void)ns_cprint(ipdo, cp, bp);
 		break;
 
 #ifdef INET6
@@ -450,7 +458,7 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 		}
 		if (pbit > 0) {
 			putchar(' ');
-			if (ns_nprint(cp + 1 + sizeof(a) - pbyte, bp) == NULL)
+			if (ns_nprint(ndo, cp + 1 + sizeof(a) - pbyte, bp) == NULL)
 				return(NULL);
 		}
 		break;
@@ -475,7 +483,7 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 		if (!vflag)
 			break;
 		putchar(' ');
-		if ((cp = ns_nprint(cp, bp)) == NULL)
+		if ((cp = ns_nprint(ipdo, cp, bp)) == NULL)
 			return(NULL);
 		cp += 6;
 		if (!TTEST2(*cp, 2))
@@ -504,7 +512,8 @@ ns_rprint(register const u_char *cp, register const u_char *bp)
 }
 
 void
-ns_print(register const u_char *bp, u_int length)
+ns_print(struct netdissect_options *ipdo,
+	 register const u_char *bp, u_int length)
 {
 	register const HEADER *np;
 	register int qdcount, ancount, nscount, arcount;
@@ -538,11 +547,15 @@ ns_print(register const u_char *bp, u_int length)
 				putchar(',');
 			if (vflag > 1) {
 				fputs(" q:", stdout);
-				if ((cp = ns_qprint((const u_char *)(np + 1), bp))
+				if ((cp = ns_qprint(ipdo,
+						    (const u_char *)(np + 1),
+						    bp))
 				    == NULL)
 					goto trunc;
 			} else {
-				if ((cp = ns_nskip((const u_char *)(np + 1), bp))
+				if ((cp = ns_nskip(ipdo,
+						   (const u_char *)(np + 1),
+						   bp))
 				    == NULL)
 					goto trunc;
 				cp += 4;	/* skip QTYPE and QCLASS */
@@ -550,11 +563,11 @@ ns_print(register const u_char *bp, u_int length)
 		}
 		printf(" %d/%d/%d", ancount, nscount, arcount);
 		if (ancount--) {
-			if ((cp = ns_rprint(cp, bp)) == NULL)
+			if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 				goto trunc;
 			while (cp < snapend && ancount--) {
 				putchar(',');
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 					goto trunc;
 			}
 		}
@@ -564,11 +577,11 @@ ns_print(register const u_char *bp, u_int length)
 		if (vflag > 1) {
 			if (cp < snapend && nscount--) {
 				fputs(" ns:", stdout);
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 					goto trunc;
 				while (cp < snapend && nscount--) {
 					putchar(',');
-					if ((cp = ns_rprint(cp, bp)) == NULL)
+					if ((cp = ns_rprint(ipdo,cp, bp)) == NULL)
 						goto trunc;
 				}
 			}
@@ -576,11 +589,11 @@ ns_print(register const u_char *bp, u_int length)
 				goto trunc;
 			if (cp < snapend && arcount--) {
 				fputs(" ar:", stdout);
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 					goto trunc;
 				while (cp < snapend && arcount--) {
 					putchar(',');
-					if ((cp = ns_rprint(cp, bp)) == NULL)
+					if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 						goto trunc;
 				}
 			}
@@ -616,12 +629,14 @@ ns_print(register const u_char *bp, u_int length)
 			printf(" [%dau]", arcount);
 
 		if (qdcount--) {
-			cp = ns_qprint((const u_char *)(np + 1),
+			cp = ns_qprint(ipdo,
+				       (const u_char *)(np + 1),
 				       (const u_char *)np);
 			if (!cp)
 				goto trunc;
 			while (cp < snapend && qdcount--) {
-				cp = ns_qprint((const u_char *)cp,
+				cp = ns_qprint(ipdo,
+					       (const u_char *)cp,
 					       (const u_char *)np);
 				if (!cp)
 					goto trunc;
@@ -633,11 +648,11 @@ ns_print(register const u_char *bp, u_int length)
 		/* Print remaining sections on -vv */
 		if (vflag > 1) {
 			if (ancount--) {
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo,cp, bp)) == NULL)
 					goto trunc;
 				while (cp < snapend && ancount--) {
 					putchar(',');
-					if ((cp = ns_rprint(cp, bp)) == NULL)
+					if ((cp = ns_rprint(ipdo,cp,bp))==NULL)
 						goto trunc;
 				}
 			}
@@ -645,11 +660,11 @@ ns_print(register const u_char *bp, u_int length)
 				goto trunc;
 			if (cp < snapend && nscount--) {
 				fputs(" ns:", stdout);
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 					goto trunc;
 				while (nscount-- && cp < snapend) {
 					putchar(',');
-					if ((cp = ns_rprint(cp, bp)) == NULL)
+					if ((cp = ns_rprint(ipdo,cp,bp))==NULL)
 						goto trunc;
 				}
 			}
@@ -657,11 +672,11 @@ ns_print(register const u_char *bp, u_int length)
 				goto trunc;
 			if (cp < snapend && arcount--) {
 				fputs(" ar:", stdout);
-				if ((cp = ns_rprint(cp, bp)) == NULL)
+				if ((cp = ns_rprint(ipdo, cp, bp)) == NULL)
 					goto trunc;
 				while (cp < snapend && arcount--) {
 					putchar(',');
-					if ((cp = ns_rprint(cp, bp)) == NULL)
+					if ((cp = ns_rprint(ipdo,cp,bp))==NULL)
 						goto trunc;
 				}
 			}

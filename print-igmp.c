@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-igmp.c,v 1.5 2001-09-17 21:58:02 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-igmp.c,v 1.5.2.1 2001-10-01 04:02:32 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"            /* must come after interface.h */
@@ -112,7 +113,8 @@ static struct tok igmpv3report2str[] = {
 };
 
 static void 
-print_mtrace(register const u_char *bp, register u_int len)
+print_mtrace(struct netdissect_options *ipdo,
+	     register const u_char *bp, register u_int len)
 {
     register const struct tr_query *tr = (const struct tr_query *)(bp + 8);
 
@@ -125,7 +127,8 @@ print_mtrace(register const u_char *bp, register u_int len)
 }
 
 static void 
-print_mresp(register const u_char *bp, register u_int len)
+print_mresp(struct netdissect_options *ipdo,
+	    register const u_char *bp, register u_int len)
 {
     register const struct tr_query *tr = (const struct tr_query *)(bp + 8);
 
@@ -138,7 +141,8 @@ print_mresp(register const u_char *bp, register u_int len)
 }
 
 static void 
-print_igmpv3_report(register const u_char *bp, register u_int len)
+print_igmpv3_report(struct netdissect_options *ipdo,
+		    register const u_char *bp, register u_int len)
 {
     u_int group, nsrcs, ngroups;
     register u_int i, j;
@@ -192,7 +196,8 @@ trunc:
 }
 
 static void
-print_igmpv3_query(register const u_char *bp, register u_int len)
+print_igmpv3_query(struct netdissect_options *ipdo,
+		   register const u_char *bp, register u_int len)
 {
     u_int mrc;
     int mrt;
@@ -243,7 +248,8 @@ trunc:
 }
 
 void
-igmp_print(register const u_char *bp, register u_int len)
+igmp_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, register u_int len)
 {
     if (qflag) {
         (void)printf("igmp");
@@ -255,7 +261,7 @@ igmp_print(register const u_char *bp, register u_int len)
     case 0x11:
         (void)printf("igmp query");
 	if (len >= 12)
-	    print_igmpv3_query(bp, len);
+	    print_igmpv3_query(ipdo, bp, len);
 	else {
 	    if (bp[1]) {
 		(void)printf(" v2");
@@ -279,7 +285,7 @@ igmp_print(register const u_char *bp, register u_int len)
         break;
     case 0x22:
         (void)printf("igmp v3 report");
-	print_igmpv3_report(bp, len);
+	print_igmpv3_report(ipdo, bp, len);
         break;
     case 0x17:
         (void)printf("igmp leave %s", ipaddr_string(&bp[4]));
@@ -289,17 +295,17 @@ igmp_print(register const u_char *bp, register u_int len)
         if (len < 8)
             (void)printf(" [len %d]", len);
         else
-            dvmrp_print(bp, len);
+            dvmrp_print(ipdo, bp, len);
         break;
     case 0x14:
         (void)printf("igmp pimv1");
-        pimv1_print(bp, len);
+        pimv1_print(ipdo, bp, len);
         break;
     case 0x1e:
-        print_mresp(bp, len);
+        print_mresp(ipdo, bp, len);
         break;
     case 0x1f:
-        print_mtrace(bp, len);
+        print_mtrace(ipdo, bp, len);
         break;
     default:
         (void)printf("igmp-%d", bp[0]);

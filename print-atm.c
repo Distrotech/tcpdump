@@ -20,7 +20,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-atm.c,v 1.21 2001-07-05 18:54:14 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-atm.c,v 1.21.2.1 2001-10-01 04:02:22 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -36,6 +36,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -52,9 +53,10 @@ atm_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_int caplen = h->caplen;
 	u_int length = h->len;
 	u_short ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < 8) {
 		printf("[|atm]");
@@ -94,23 +96,23 @@ atm_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	switch (ethertype) {
 
 	case ETHERTYPE_IP:
-		ip_print(p, length);
+		ip_print(ipdo, p, length);
 		break;
 
 #ifdef INET6
 	case ETHERTYPE_IPV6:
-		ip6_print(p, length);
+		ip6_print(ipdo, p, length);
 		break;
 #endif /*INET6*/
 
 		/*XXX this probably isn't right */
 	case ETHERTYPE_ARP:
 	case ETHERTYPE_REVARP:
-		arp_print(p, length, caplen);
+		arp_print(ipdo, p, length, caplen);
 		break;
 #ifdef notyet
 	case ETHERTYPE_DN:
-		decnet_print(p, length, caplen);
+		decnet_print(ipdo, p, length, caplen);
 		break;
 
 	case ETHERTYPE_ATALK:

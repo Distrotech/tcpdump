@@ -20,7 +20,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-zephyr.c,v 1.2 2001-09-11 02:37:12 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-zephyr.c,v 1.2.2.1 2001-10-01 04:02:58 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -33,6 +33,7 @@ static const char rcsid[] =
 #include <stdlib.h>
 #include <sys/types.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 
 struct z_packet {
@@ -83,7 +84,8 @@ static struct tok z_types[] = {
 char z_buf[256];
 
 static char *
-parse_field(char **pptr, int *len)
+parse_field(struct netdissect_options *ndo,
+	    char **pptr, int *len)
 {
     char *s;
 
@@ -130,7 +132,8 @@ str_to_lower(char *string)
 }
 
 void
-zephyr_print(const u_char *cp, int length)
+zephyr_print(struct netdissect_options *ndo,
+	     const u_char *cp, int length)
 {
     struct z_packet z;
     char *parse = (char *) cp;
@@ -139,7 +142,7 @@ zephyr_print(const u_char *cp, int length)
     int lose = 0;
 
 #define PARSE_STRING				\
-	s = parse_field(&parse, &parselen);	\
+	s = parse_field(ndo, &parse, &parselen);	\
 	if (!s) lose = 1;
 
 #define PARSE_FIELD_INT(field)			\

@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-tftp.c,v 1.31 1999-11-21 09:37:03 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-tftp.c,v 1.31.4.1 2001-10-01 04:02:55 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -44,6 +44,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -74,7 +75,8 @@ static struct tok err2str[] = {
  * Print trivial file transfer program requests
  */
 void
-tftp_print(register const u_char *bp, u_int length)
+tftp_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, u_int length)
 {
 	register const struct tftphdr *tp;
 	register const char *cp;

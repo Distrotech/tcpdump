@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-timed.c,v 1.3 2001-05-17 18:33:23 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-timed.c,v 1.3.2.1 2001-10-01 04:02:55 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -35,6 +35,7 @@ static const char rcsid[] =
 #include <string.h>
 
 #include "timed.h"
+#define AVOID_CHURN 1
 #include "interface.h"
 
 static char *tsptype[TSPTYPENUMBER] =
@@ -44,7 +45,8 @@ static char *tsptype[TSPTYPENUMBER] =
   "TEST", "SETDATE", "SETDATEREQ", "LOOP" };
 
 void
-timed_print(register const u_char *bp, u_int length)
+timed_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, u_int length)
 {
 #define endof(x) ((u_char *)&(x) + sizeof (x))
 	struct tsp *tsp = (struct tsp *)bp;

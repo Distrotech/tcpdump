@@ -30,7 +30,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-isakmp.c,v 1.28 2001-02-20 18:55:14 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-isakmp.c,v 1.28.2.1 2001-10-01 04:02:35 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -51,6 +51,7 @@ struct rtentry;
 #include <stdio.h>
 #include <netdb.h>
 
+#define AVOID_CHURN 1
 #include "isakmp.h"
 #include "ipsec_doi.h"
 #include "oakley.h"
@@ -67,35 +68,36 @@ struct rtentry;
 #define sockaddr_storage sockaddr
 #endif
 
-static u_char *isakmp_sa_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_sa_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_p_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_p_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_t_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_t_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_ke_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_ke_print(struct netdissect_options *ipdo,
+			       struct isakmp_gen *, u_char *, u_int32_t,
+			       u_int32_t, u_int32_t);
+static u_char *isakmp_id_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_id_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_cert_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_cert_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_cr_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_cr_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_sig_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_sig_print(struct isakmp_gen *, u_char *, u_int32_t,
-	u_int32_t, u_int32_t);
-static u_char *isakmp_hash_print(struct isakmp_gen *, u_char *,
+static u_char *isakmp_hash_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *,
 	u_int32_t, u_int32_t, u_int32_t);
-static u_char *isakmp_nonce_print(struct isakmp_gen *, u_char *,
+static u_char *isakmp_nonce_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *,
 	u_int32_t, u_int32_t, u_int32_t);
-static u_char *isakmp_n_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_n_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_d_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_d_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_vid_print(struct isakmp_gen *, u_char *, u_int32_t,
+static u_char *isakmp_vid_print(struct netdissect_options *ipdo,struct isakmp_gen *, u_char *, u_int32_t,
 	u_int32_t, u_int32_t);
-static u_char *isakmp_sub0_print(u_char, struct isakmp_gen *, u_char *,
+static u_char *isakmp_sub0_print(struct netdissect_options *ipdo,u_char, struct isakmp_gen *, u_char *,
 	u_int32_t, u_int32_t, u_int32_t);
-static u_char *isakmp_sub_print(u_char, struct isakmp_gen *, u_char *,
+static u_char *isakmp_sub_print(struct netdissect_options *ipdo,u_char, struct isakmp_gen *, u_char *,
 	u_int32_t, u_int32_t, u_int32_t);
 static char *numstr(int);
 static void safememcpy(void *, void *, size_t);
@@ -120,8 +122,9 @@ static char *npstr[] = {
 };
 
 /* isakmp->np */
-static u_char *(*npfunc[])(struct isakmp_gen *, u_char *, u_int32_t,
-		u_int32_t, u_int32_t) = {
+static u_char *(*npfunc[])(struct netdissect_options *,
+			   struct isakmp_gen *, u_char *, u_int32_t,
+			   u_int32_t, u_int32_t) = {
 	NULL,
 	isakmp_sa_print,
 	isakmp_p_print,
@@ -347,7 +350,7 @@ struct attrmap {
 };
 
 static u_char *
-isakmp_attrmap_print(u_char *p, u_char *ep, struct attrmap *map, size_t nmap)
+isakmp_attrmap_print(struct netdissect_options *ipdo,u_char *p, u_char *ep, struct attrmap *map, size_t nmap)
 {
 	u_int16_t *q;
 	int totlen;
@@ -385,7 +388,7 @@ isakmp_attrmap_print(u_char *p, u_char *ep, struct attrmap *map, size_t nmap)
 }
 
 static u_char *
-isakmp_attr_print(u_char *p, u_char *ep)
+isakmp_attr_print(struct netdissect_options *ipdo,u_char *p, u_char *ep)
 {
 	u_int16_t *q;
 	int totlen;
@@ -417,7 +420,7 @@ isakmp_attr_print(u_char *p, u_char *ep)
 }
 
 static u_char *
-isakmp_sa_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_sa_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_sa *p, sa;
@@ -462,13 +465,13 @@ isakmp_sa_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 
 	ext = (struct isakmp_gen *)np;
 
-	cp = isakmp_sub_print(ISAKMP_NPTYPE_P, ext, ep, phase, doi, proto0);
+	cp = isakmp_sub_print(ipdo,ISAKMP_NPTYPE_P, ext, ep, phase, doi, proto0);
 
 	return cp;
 }
 
 static u_char *
-isakmp_p_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_p_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_p *p, prop;
@@ -487,7 +490,7 @@ isakmp_p_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 
 	ext = (struct isakmp_gen *)((u_char *)(p + 1) + prop.spi_size);
 
-	cp = isakmp_sub_print(ISAKMP_NPTYPE_T, ext, ep, phase, doi0,
+	cp = isakmp_sub_print(ipdo, ISAKMP_NPTYPE_T, ext, ep, phase, doi0,
 		prop.prot_id);
 
 	return cp;
@@ -550,7 +553,7 @@ struct attrmap oakley_t_map[] = {
 };
 
 static u_char *
-isakmp_t_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_t_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_pl_t *p, t;
@@ -601,10 +604,11 @@ isakmp_t_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	ep2 = (u_char *)p + ntohs(t.h.len);
 	while (cp < ep && cp < ep2) {
 		if (map && nmap) {
-			cp = isakmp_attrmap_print(cp, (ep < ep2) ? ep : ep2,
-				map, nmap);
+			cp = isakmp_attrmap_print(ipdo, cp,
+						  (ep < ep2) ? ep : ep2,
+						  map, nmap);
 		} else
-			cp = isakmp_attr_print(cp, (ep < ep2) ? ep : ep2);
+			cp = isakmp_attr_print(ipdo, cp,(ep < ep2) ? ep : ep2);
 	}
 	if (ep < ep2)
 		printf("...");
@@ -612,7 +616,8 @@ isakmp_t_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_ke_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_ke_print(struct netdissect_options *ipdo,
+		struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_gen e;
@@ -629,7 +634,7 @@ isakmp_ke_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_id_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_id_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 #define USE_IPSECDOI_IN_PHASE1	1
@@ -766,7 +771,7 @@ isakmp_id_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_cert_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_cert_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_cert *p, cert;
@@ -790,7 +795,7 @@ isakmp_cert_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_cr_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_cr_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_cert *p, cert;
@@ -814,7 +819,7 @@ isakmp_cr_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_hash_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_hash_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_gen e;
@@ -831,7 +836,7 @@ isakmp_hash_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_sig_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_sig_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_gen e;
@@ -848,7 +853,7 @@ isakmp_sig_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_nonce_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_nonce_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_gen e;
@@ -865,7 +870,7 @@ isakmp_nonce_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_n_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_n_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_n *p, n;
@@ -946,7 +951,7 @@ isakmp_n_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 			struct attrmap *map = oakley_t_map;
 			size_t nmap = sizeof(oakley_t_map)/sizeof(oakley_t_map[0]);
 			while (cp < ep && cp < ep2) {
-				cp = isakmp_attrmap_print(cp,
+				cp = isakmp_attrmap_print(ipdo, cp,
 					(ep < ep2) ? ep : ep2, map, nmap);
 			}
 			break;
@@ -956,12 +961,12 @@ isakmp_n_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 				(*(u_int32_t *)cp) ? "en" : "dis");
 			break;
 		case ISAKMP_NTYPE_NO_PROPOSAL_CHOSEN:
-			isakmp_sub_print(ISAKMP_NPTYPE_SA,
-				(struct isakmp_gen *)cp, ep, phase, doi, proto);
+			isakmp_sub_print(ipdo, ISAKMP_NPTYPE_SA,
+			      (struct isakmp_gen *)cp, ep, phase, doi, proto);
 			break;
 		default:
 			/* NULL is dummy */
-			isakmp_print(cp,
+			isakmp_print(ipdo, cp,
 				ntohs(n.h.len) - sizeof(*p) - n.spi_size,
 				NULL);
 		}
@@ -971,7 +976,7 @@ isakmp_n_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_d_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_d_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi0, u_int32_t proto0)
 {
 	struct isakmp_pl_d *p, d;
@@ -1007,7 +1012,7 @@ isakmp_d_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_vid_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
+isakmp_vid_print(struct netdissect_options *ipdo,struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 	u_int32_t doi, u_int32_t proto)
 {
 	struct isakmp_gen e;
@@ -1024,7 +1029,7 @@ isakmp_vid_print(struct isakmp_gen *ext, u_char *ep, u_int32_t phase,
 }
 
 static u_char *
-isakmp_sub0_print(u_char np, struct isakmp_gen *ext, u_char *ep,
+isakmp_sub0_print(struct netdissect_options *ipdo,u_char np, struct isakmp_gen *ext, u_char *ep,
 	u_int32_t phase, u_int32_t doi, u_int32_t proto)
 {
 	u_char *cp;
@@ -1034,7 +1039,7 @@ isakmp_sub0_print(u_char np, struct isakmp_gen *ext, u_char *ep,
 	safememcpy(&e, ext, sizeof(e));
 
 	if (NPFUNC(np))
-		cp = (*NPFUNC(np))(ext, ep, phase, doi, proto);
+		cp = (*NPFUNC(np))(ipdo, ext, ep, phase, doi, proto);
 	else {
 		printf("%s", NPSTR(np));
 		cp += ntohs(e.len);
@@ -1043,7 +1048,7 @@ isakmp_sub0_print(u_char np, struct isakmp_gen *ext, u_char *ep,
 }
 
 static u_char *
-isakmp_sub_print(u_char np, struct isakmp_gen *ext, u_char *ep,
+isakmp_sub_print(struct netdissect_options *ipdo,u_char np, struct isakmp_gen *ext, u_char *ep,
 	u_int32_t phase, u_int32_t doi, u_int32_t proto)
 {
 	u_char *cp;
@@ -1066,7 +1071,7 @@ isakmp_sub_print(u_char np, struct isakmp_gen *ext, u_char *ep,
 		for (i = 0; i < depth; i++)
 			printf("    ");
 		printf("(");
-		cp = isakmp_sub0_print(np, ext, ep, phase, doi, proto);
+		cp = isakmp_sub0_print(ipdo, np, ext, ep, phase, doi, proto);
 		printf(")");
 		depth--;
 
@@ -1096,7 +1101,7 @@ safememcpy(void *p, void *q, size_t l)
 }
 
 void
-isakmp_print(const u_char *bp, u_int length, const u_char *bp2)
+isakmp_print(struct netdissect_options *ipdo,const u_char *bp, u_int length, const u_char *bp2)
 {
 	struct isakmp *p, base;
 	u_char *ep;
@@ -1193,7 +1198,7 @@ isakmp_print(const u_char *bp, u_int length, const u_char *bp2)
 
 	np = base.np;
 	ext = (struct isakmp_gen *)(p + 1);
-	isakmp_sub_print(np, ext, ep, phase, 0, 0);
+	isakmp_sub_print(ipdo, np, ext, ep, phase, 0, 0);
     }
 
 done:

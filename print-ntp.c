@@ -25,7 +25,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ntp.c,v 1.32 2001-08-20 15:36:57 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ntp.c,v 1.32.2.1 2001-10-01 04:02:42 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #ifdef MODEMASK
@@ -57,7 +58,8 @@ static void p_ntp_delta(const struct l_fixedpt *, const struct l_fixedpt *);
  * Print ntp requests
  */
 void
-ntp_print(register const u_char *cp, u_int length)
+ntp_print(struct netdissect_options *ipdo,
+	  register const u_char *cp, u_int length)
 {
 	register const struct ntpdata *bp;
 	int mode, version, leapind;

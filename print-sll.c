@@ -20,7 +20,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-sll.c,v 1.6 2001-07-05 18:54:18 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-sll.c,v 1.6.2.1 2001-10-01 04:02:51 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,6 +40,7 @@ struct rtentry;
 #include <string.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -48,7 +49,8 @@ struct rtentry;
 #include "sll.h"
 
 static inline void
-sll_print(register const struct sll_header *sllp, u_int length)
+sll_print(struct netdissect_options *ipdo,
+	  register const struct sll_header *sllp, u_int length)
 {
 	u_short halen;
 
@@ -86,10 +88,10 @@ sll_print(register const struct sll_header *sllp, u_int length)
 	 */
 	halen = ntohs(sllp->sll_halen);
 	if (halen == 6)
-		(void)printf("%s ", etheraddr_string(sllp->sll_addr));
+		(void)printf("%s ", etheraddr_string(ipdo, sllp->sll_addr));
 
 	if (!qflag)
-		(void)printf("%s ", etherproto_string(sllp->sll_protocol));
+		(void)printf("%s ", etherproto_string(ipdo,sllp->sll_protocol));
 	(void)printf("%d: ", length);
 }
 
@@ -109,9 +111,10 @@ sll_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	struct ether_header ehdr;
 	u_short ether_type;
 	u_short extracted_ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < SLL_HDR_LEN) {
 		/*
@@ -165,7 +168,7 @@ sll_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	}
 
 	if (eflag)
-		sll_print(sllp, length);
+		sll_print(ipdo, sllp, length);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -202,7 +205,7 @@ sll_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 			/*
 			 * Ethernet_802.3 IPX frame.
 			 */
-			ipx_print(p, length);
+			ipx_print(ipdo, p, length);
 			break;
 
 		case LINUX_SLL_P_802_2:
@@ -210,7 +213,7 @@ sll_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 			 * 802.2.
 			 * Try to print the LLC-layer header & higher layers.
 			 */
-			if (llc_print(p, length, caplen, ESRC(&ehdr),
+			if (llc_print(ipdo, p, length, caplen, ESRC(&ehdr),
 			    EDST(&ehdr), &extracted_ethertype) == 0)
 				goto unknown;	/* unknown LLC type */
 			break;
@@ -219,20 +222,21 @@ sll_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		unknown:
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				sll_print(sllp, length + SLL_HDR_LEN);
+				sll_print(ipdo, sllp, length + SLL_HDR_LEN);
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			       etherproto_string(htons(extracted_ethertype)));
+			       etherproto_string(ipdo,
+						 htons(extracted_ethertype)));
 			}
 			if (!xflag && !qflag)
 				default_print(p, caplen);
 			break;
 		}
-	} else if (ether_encap_print(ether_type, p, length, caplen,
-	    &extracted_ethertype) == 0) {
+	} else if (ether_encap_print(ipdo, ether_type, p, length, caplen,
+				     &extracted_ethertype) == 0) {
 		/* ether_type not known, print raw packet */
 		if (!eflag)
-			sll_print(sllp, length + SLL_HDR_LEN);
+			sll_print(ipdo, sllp, length + SLL_HDR_LEN);
 		if (!xflag && !qflag)
 			default_print(p, caplen);
 	}

@@ -18,29 +18,31 @@
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
- * @(#) $Header: /tcpdump/master/tcpdump/addrtoname.h,v 1.18 2001-09-17 21:57:51 fenner Exp $ (LBL)
+ * @(#) $Header: /tcpdump/master/tcpdump/addrtoname.h,v 1.18.2.1 2001-10-01 04:02:17 mcr Exp $ (LBL)
  */
 
 /* Name to address translation routines. */
 
-extern const char *linkaddr_string(const u_char *, const unsigned int);
-extern const char *etheraddr_string(const u_char *);
-extern const char *etherproto_string(u_short);
-extern const char *tcpport_string(u_short);
-extern const char *udpport_string(u_short);
-extern const char *getname(const u_char *);
+struct netdissect_options;
+
+extern const char *etheraddr_string(struct netdissect_options *ipdo,
+			      const u_char *);
+extern const char *etherproto_string(struct netdissect_options *, u_short);
+extern const char *tcpport_string(struct netdissect_options *, u_short);
+extern const char *udpport_string(struct netdissect_options *, u_short);
+extern const char *getname(struct netdissect_options *ipdo, const u_char *);
 #ifdef INET6
-extern const char *getname6(const u_char *);
+extern const char *getname6(struct netdissect_options *ipdo, const u_char *);
 #endif
 extern const char *intoa(u_int32_t);
 
-extern void init_addrtoname(u_int32_t, u_int32_t);
-extern struct hnamemem *newhnamemem(void);
+extern void init_addrtoname(struct netdissect_options *, u_int32_t, u_int32_t);
+extern struct hnamemem *newhnamemem(struct netdissect_options *ipdo);
 #ifdef INET6
-extern struct h6namemem *newh6namemem(void);
+extern struct h6namemem *newh6namemem(struct netdissect_options *ipdo);
 #endif
 
-#define ipaddr_string(p) getname((const u_char *)(p))
+#define ipaddr_string(p) getname(ipdo,(const u_char *)(p))
 #ifdef INET6
-#define ip6addr_string(p) getname6((const u_char *)(p))
+#define ip6addr_string(p) getname6(ipdo,(const u_char *)(p))
 #endif

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-sunrpc.c,v 1.39 2000-10-07 05:53:13 itojun Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-sunrpc.c,v 1.39.2.1 2001-10-01 04:02:53 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -48,6 +48,7 @@ struct rtentry;
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -70,7 +71,8 @@ static struct tok proc2str[] = {
 static char *progstr(u_int32_t);
 
 void
-sunrpcrequest_print(register const u_char *bp, register u_int length,
+sunrpcrequest_print(struct netdissect_options *ipdo,
+		    register const u_char *bp, register u_int length,
 		    register const u_char *bp2)
 {
 	register const struct rpc_msg *rp;

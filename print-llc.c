@@ -24,7 +24,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-llc.c,v 1.41 2001-09-23 21:52:39 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-llc.c,v 1.41.2.1 2001-10-01 04:02:39 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,6 +41,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -64,7 +65,8 @@ static struct tok cmd2str[] = {
  * Returns non-zero IFF it succeeds in printing the header
  */
 int
-llc_print(const u_char *p, u_int length, u_int caplen,
+llc_print(struct netdissect_options *ipdo,
+	  const u_char *p, u_int length, u_int caplen,
 	  const u_char *esrc, const u_char *edst, u_short *extracted_ethertype)
 {
 	struct llc llc;
@@ -96,12 +98,12 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		 * such as an 802.11 network; this has appeared in at
 		 * least one capture file.)
 		 */
-		ipx_print(p, length);
+		ipx_print(ipdo, p, length);
 		return (1);
 	}
 
 	if (llc.ssap == LLCSAP_8021D && llc.dsap == LLCSAP_8021D) {
-		stp_print(p, length);
+		stp_print(ipdo, p, length);
 		return (1);
 	}
 
@@ -117,7 +119,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		p += 3;
 		length -= 3;
 		caplen -= 3;
-		ipx_print(p, length);
+		ipx_print(ipdo, p, length);
 		return (1);
 	}
 
@@ -162,12 +164,12 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 			length -= 2;
 			caplen -= 2;
 		}
-		netbeui_print(control, p, length);
+		netbeui_print(ipdo, control, p, length);
 		return (1);
 	}
 	if (llc.ssap == LLCSAP_ISONS && llc.dsap == LLCSAP_ISONS
 	    && llc.llcui == LLC_UI) {
-		isoclns_print(p + 3, length - 3, caplen - 3, esrc, edst);
+		isoclns_print(ipdo, p + 3, length - 3, caplen - 3, esrc, edst);
 		return (1);
 	}
 
@@ -181,7 +183,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 			return (0);
 		}
 		if (vflag)
-			(void)printf("snap %s ", protoid_string(llc.llcpi));
+			(void)printf("snap %s ", protoid_string(ipdo,llc.llcpi));
 
 		caplen -= sizeof(llc);
 		length -= sizeof(llc);
@@ -198,8 +200,9 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 			 * Cisco hardware; the protocol ID is
 			 * an Ethernet protocol type.
 			 */
-			ret = ether_encap_print(et, p, length, caplen,
-			    extracted_ethertype);
+			ret = ether_encap_print(ndo,
+						et, p, length, caplen,
+						extracted_ethertype);
 			if (ret)
 				return (ret);
 			break;
@@ -214,8 +217,9 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 				 * but used 0x000000 and an Ethernet
 				 * packet type for AARP packets.
 				 */
-				ret = ether_encap_print(et, p, length, caplen,
-				    extracted_ethertype);
+				ret = ether_encap_print(ndo,
+							et, p, length, caplen,
+							extracted_ethertype);
 				if (ret)
 					return (ret);
 			}
@@ -223,7 +227,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 
 		case OUI_CISCO:
 			if (et == ETHERTYPE_CISCO_CDP) {
-				cdp_print(p, length, caplen, esrc, edst);
+				cdp_print(ndo, p, length, caplen, esrc, edst);
 				return 1;
 			}
 			break;
@@ -232,23 +236,23 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 
 	if ((llc.ssap & ~LLC_GSAP) == llc.dsap) {
 		if (eflag || esrc == NULL || edst == NULL)
-			(void)printf("%s ", llcsap_string(llc.dsap));
+			(void)printf("%s ", llcsap_string(ipdo,llc.dsap));
 		else
 			(void)printf("%s > %s %s ",
-					etheraddr_string(esrc),
-					etheraddr_string(edst),
-					llcsap_string(llc.dsap));
+					etheraddr_string(ipdo,esrc),
+					etheraddr_string(ipdo,edst),
+					llcsap_string(ipdo,llc.dsap));
 	} else {
 		if (eflag || esrc == NULL || edst == NULL)
 			(void)printf("%s > %s ",
-				llcsap_string(llc.ssap & ~LLC_GSAP),
-				llcsap_string(llc.dsap));
+				llcsap_string(ipdo,llc.ssap & ~LLC_GSAP),
+				llcsap_string(ipdo,llc.dsap));
 		else
 			(void)printf("%s %s > %s %s ",
-				etheraddr_string(esrc),
-				llcsap_string(llc.ssap & ~LLC_GSAP),
-				etheraddr_string(edst),
-				llcsap_string(llc.dsap));
+				etheraddr_string(ipdo,esrc),
+				llcsap_string(ipdo,llc.ssap & ~LLC_GSAP),
+				etheraddr_string(ipdo,edst),
+				llcsap_string(ipdo,llc.dsap));
 	}
 
 	if ((llc.llcu & LLC_U_FMT) == LLC_U_FMT) {

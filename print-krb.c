@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-krb.c,v 1.15 2000-09-29 04:58:42 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-krb.c,v 1.15.2.1 2001-10-01 04:02:37 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,13 +40,14 @@ static const char rcsid[] =
 #include <errno.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 const u_char *c_print(register const u_char *, register const u_char *);
-const u_char *krb4_print_hdr(const u_char *);
-void krb4_print(const u_char *);
-void krb_print(const u_char *, u_int);
+const u_char *krb4_print_hdr(struct netdissect_options *ipdo, const u_char *);
+void krb4_print(struct netdissect_options *ipdo, const u_char *);
+void krb_print(struct netdissect_options *ipdo, const u_char *, u_int);
 
 
 #define AUTH_MSG_KDC_REQUEST			1<<1
@@ -155,7 +156,7 @@ c_print(register const u_char *s, register const u_char *ep)
 }
 
 const u_char *
-krb4_print_hdr(const u_char *cp)
+krb4_print_hdr(struct netdissect_options *ipdo, const u_char *cp)
 {
 	cp += 2;
 
@@ -176,7 +177,8 @@ trunc:
 }
 
 void
-krb4_print(const u_char *cp)
+krb4_print(struct netdissect_options *ipdo,
+	   const u_char *cp)
 {
 	register const struct krb *kp;
 	u_char type;
@@ -202,7 +204,7 @@ krb4_print(const u_char *cp)
 	switch (type) {
 
 	case AUTH_MSG_KDC_REQUEST:
-		if ((cp = krb4_print_hdr(cp)) == NULL)
+		if ((cp = krb4_print_hdr(ipdo, cp)) == NULL)
 			return;
 		cp += 4;	/* ctime */
 		TCHECK(*cp);
@@ -224,7 +226,7 @@ krb4_print(const u_char *cp)
 		break;
 
 	case AUTH_MSG_KDC_REPLY:
-		if ((cp = krb4_print_hdr(cp)) == NULL)
+		if ((cp = krb4_print_hdr(ipdo, cp)) == NULL)
 			return;
 		cp += 10;	/* timestamp + n + exp + kvno */
 		TCHECK2(*cp, sizeof(short));
@@ -233,7 +235,7 @@ krb4_print(const u_char *cp)
 		break;
 
 	case AUTH_MSG_ERR_REPLY:
-		if ((cp = krb4_print_hdr(cp)) == NULL)
+		if ((cp = krb4_print_hdr(ipdo, cp)) == NULL)
 			return;
 		cp += 4; 	  /* timestamp */
 		TCHECK2(*cp, sizeof(short));
@@ -253,7 +255,8 @@ trunc:
 }
 
 void
-krb_print(const u_char *dat, u_int length)
+krb_print(struct netdissect_options *ipdo,
+	  const u_char *dat, u_int length)
 {
 	register const struct krb *kp;
 
@@ -274,7 +277,7 @@ krb_print(const u_char *dat, u_int length)
 
 	case 4:
 		printf(" v%d", kp->pvno);
-		krb4_print((const u_char *)kp);
+		krb4_print(ipdo, (const u_char *)kp);
 		break;
 
 	case 106:

@@ -31,7 +31,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ppp.c,v 1.64 2001-09-09 02:04:19 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ppp.c,v 1.64.2.1 2001-10-01 04:02:45 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -53,6 +53,7 @@ static const char rcsid[] =
 #include <pcap.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "extract.h"
 #include "addrtoname.h"
@@ -330,15 +331,21 @@ static const char *papcode[] = {
 #define BAP_CSRES	8
 
 static const char *ppp_protoname (u_int proto);
-static void handle_ctrl_proto (u_int proto,const u_char *p, int length);
+static void handle_ctrl_proto (struct netdissect_options *,
+			       u_int proto,const u_char *p, int length);
 static void handle_chap (const u_char *p, int length);
 static void handle_pap (const u_char *p, int length);
 static void handle_bap (const u_char *p, int length);
-static int print_lcp_config_options (const u_char *p, int);
-static int print_ipcp_config_options (const u_char *p, int);
-static int print_ccp_config_options (const u_char *p, int);
-static int print_bacp_config_options (const u_char *p, int);
-static void handle_ppp (u_int proto, const u_char *p, int length);
+static int print_lcp_config_options (struct netdissect_options *,
+				     const u_char *p, int);
+static int print_ipcp_config_options (struct netdissect_options *,
+				      const u_char *p, int);
+static int print_ccp_config_options (struct netdissect_options *,
+				     const u_char *p, int);
+static int print_bacp_config_options (struct netdissect_options *,
+				      const u_char *p, int);
+static void handle_ppp (struct netdissect_options *ipdo,
+			u_int proto, const u_char *p, int length);
 
 static const char *
 ppp_protoname(u_int proto)
@@ -377,10 +384,11 @@ ppp_protoname(u_int proto)
 
 /* generic Control Protocol (e.g. LCP, IPCP, CCP, etc.) handler */
 static void
-handle_ctrl_proto(u_int proto, const u_char *p, int length)
+handle_ctrl_proto(struct netdissect_options *ipdo,
+		  u_int proto, const u_char *p, int length)
 {
 	u_int code, len;
-	int (*pfunc)(const u_char *, int);
+	int (*pfunc)(struct netdissect_options *, const u_char *, int);
 	int x, j;
 
 	if (length < 1) {
@@ -446,7 +454,7 @@ handle_ctrl_proto(u_int proto, const u_char *p, int length)
 				pfunc = NULL;
 				break;
 			}
-			if ((j = (*pfunc)(p, len)) == 0)
+			if ((j = (*pfunc)(ipdo, p, len)) == 0)
 				break;
 			x -= j;
 			p += j;
@@ -490,7 +498,8 @@ handle_ctrl_proto(u_int proto, const u_char *p, int length)
 
 /* LCP config options */
 static int
-print_lcp_config_options(const u_char *p, int length)
+print_lcp_config_options(struct netdissect_options *ipdo,
+			 const u_char *p, int length)
 {
 	int len, opt;
 
@@ -815,7 +824,8 @@ handle_bap(const u_char *p, int length)
 
 /* IPCP config options */
 static int
-print_ipcp_config_options(const u_char *p, int length)
+print_ipcp_config_options(struct netdissect_options *ipdo,
+			  const u_char *p, int length)
 {
 	int len, opt;
 
@@ -886,7 +896,8 @@ invlen:
 
 /* CCP config options */
 static int
-print_ccp_config_options(const u_char *p, int length)
+print_ccp_config_options(struct netdissect_options *ipdo,
+			 const u_char *p, int length)
 {
 	int len, opt;
 
@@ -927,7 +938,8 @@ print_ccp_config_options(const u_char *p, int length)
 
 /* BACP config options */
 static int
-print_bacp_config_options(const u_char *p, int length)
+print_bacp_config_options(struct netdissect_options *ipdo,
+			  const u_char *p, int length)
 {
 	int len, opt;
 
@@ -949,14 +961,15 @@ print_bacp_config_options(const u_char *p, int length)
 
 /* PPP */
 static void
-handle_ppp(u_int proto, const u_char *p, int length)
+handle_ppp(struct netdissect_options *ipdo,
+	   u_int proto, const u_char *p, int length)
 {
 	switch (proto) {
 	case PPP_LCP:
 	case PPP_IPCP:
 	case PPP_CCP:
 	case PPP_BACP:
-		handle_ctrl_proto(proto, p, length);
+		handle_ctrl_proto(ipdo, proto, p, length);
 		break;
 	case PPP_CHAP:
 		handle_chap(p, length);
@@ -969,20 +982,20 @@ handle_ppp(u_int proto, const u_char *p, int length)
 		break;
 	case ETHERTYPE_IP:	/*XXX*/
 	case PPP_IP:
-		ip_print(p, length);
+		ip_print(ipdo, p, length);
 		break;
 #ifdef INET6
 	case ETHERTYPE_IPV6:	/*XXX*/
 	case PPP_IPV6:
-		ip6_print(p, length);
+		ip6_print(ipdo, p, length);
 		break;
 #endif
 	case ETHERTYPE_IPX:	/*XXX*/
 	case PPP_IPX:
-		ipx_print(p, length);
+		ipx_print(ipdo, p, length);
 		break;
 	case PPP_OSI:
-	        isoclns_print(p, length, length, NULL, NULL);
+	        isoclns_print(ndo, p, length, length, NULL, NULL);
 	        break;
 	default:
 		break;
@@ -991,7 +1004,8 @@ handle_ppp(u_int proto, const u_char *p, int length)
 
 /* Standard PPP printer */
 void
-ppp_print(register const u_char *p, u_int length)
+ppp_print(struct netdissect_options *ipdo,
+	  register const u_char *p, u_int length)
 {
 	u_int proto;
 	u_int full_length = length;
@@ -1022,7 +1036,7 @@ ppp_print(register const u_char *p, u_int length)
 	if (eflag)
 		printf("%s %d: ", ppp_protoname(proto), full_length);
 
-	handle_ppp(proto, p, length);
+	handle_ppp(ipdo, proto, p, length);
 	return;
 trunc:
 	printf("[|ppp]");
@@ -1036,9 +1050,10 @@ ppp_if_print(u_char *user, const struct pcap_pkthdr *h,
 {
 	register u_int length = h->len;
 	register u_int caplen = h->caplen;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < PPP_HDRLEN) {
 		printf("[|ppp]");
@@ -1094,7 +1109,7 @@ ppp_if_print(u_char *user, const struct pcap_pkthdr *h,
 		printf("%c %4d %02x ", p[0] ? 'O' : 'I', length, p[1]);
 #endif
 
-	ppp_print(p, length);
+	ppp_print(ipdo, p, length);
 
 	if (xflag)
 		default_print(p, caplen);
@@ -1121,9 +1136,10 @@ ppp_hdlc_if_print(u_char *user, const struct pcap_pkthdr *h,
 	register u_int length = h->len;
 	register u_int caplen = h->caplen;
 	u_int proto;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < 2) {
 		printf("[|ppp]");
@@ -1157,12 +1173,12 @@ ppp_hdlc_if_print(u_char *user, const struct pcap_pkthdr *h,
 		if (eflag)
 			printf("%s: ", ppp_protoname(proto));
 
-		handle_ppp(proto, p, length);
+		handle_ppp(ipdo, proto, p, length);
 		break;
 
 	case CHDLC_UNICAST:
 	case CHDLC_BCAST:
-		chdlc_print(p, length, caplen);
+		chdlc_print(ndo, p, length, caplen);
 		goto out;
 
 	default:
@@ -1242,7 +1258,7 @@ ppp_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h,
 	int i;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo,&h->ts);
 
 	if (caplen < PPP_BSDI_HDRLEN) {
 		printf("[|ppp]");
@@ -1319,31 +1335,31 @@ ppp_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h,
 
 		switch (ptype) {
 		case PPP_VJC:
-			ptype = vjc_print(q, length - (q - p), ptype);
+			ptype = vjc_print(ipdo,q, length - (q - p), ptype);
 			hdrlength = PPP_BSDI_HDRLEN;
 			p += hdrlength;
 			switch (ptype) {
 			case PPP_IP:
-				ip_print(p, length);
+				ip_print(ipdo,p, length);
 				break;
 #ifdef INET6
 			case PPP_IPV6:
-				ip6_print(p, length);
+				ip6_print(ipdo,p, length);
 				break;
 #endif
 			}
 			goto printx;
 		case PPP_VJNC:
-			ptype = vjc_print(q, length - (q - p), ptype);
+			ptype = vjc_print(ipdo,q, length - (q - p), ptype);
 			hdrlength = PPP_BSDI_HDRLEN;
 			p += hdrlength;
 			switch (ptype) {
 			case PPP_IP:
-				ip_print(p, length);
+				ip_print(ipdo,p, length);
 				break;
 #ifdef INET6
 			case PPP_IPV6:
-				ip6_print(p, length);
+				ip6_print(ipdo,p, length);
 				break;
 #endif
 			}
@@ -1367,11 +1383,11 @@ ppp_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h,
 
 	switch (ptype) {
 	case PPP_IP:
-		ip_print(p, length);
+		ip_print(ipdo,p, length);
 		break;
 #ifdef INET6
 	case PPP_IPV6:
-		ip6_print(p, length);
+		ip6_print(ipdo,p, length);
 		break;
 #endif
 	default:

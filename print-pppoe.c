@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-"@(#) $Header: /tcpdump/master/tcpdump/print-pppoe.c,v 1.15 2001-07-05 18:54:17 guy Exp $ (LBL)";
+"@(#) $Header: /tcpdump/master/tcpdump/print-pppoe.c,v 1.15.2.1 2001-10-01 04:02:46 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -37,6 +37,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ppp.h"
@@ -99,9 +100,11 @@ pppoe_if_print(u_char *user, const struct pcap_pkthdr *h,
 {
 	register u_int length = h->len;
 	register u_int caplen = h->caplen;
+	struct netdissect_options *ndo = (struct netdissect_options *)user;
+
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ndo, &h->ts);
 
 	/*
 	 * Some printers want to get back at the link level addresses,
@@ -111,7 +114,7 @@ pppoe_if_print(u_char *user, const struct pcap_pkthdr *h,
 	packetp = p;
 	snapend = p + caplen;
 
-	pppoe_print(p, length);
+	pppoe_print(ipdo, p, length);
 	putchar('\n');
 	--infodelay;
 	if (infoprint)
@@ -119,7 +122,8 @@ pppoe_if_print(u_char *user, const struct pcap_pkthdr *h,
 }
 
 void
-pppoe_print(register const u_char *bp, u_int length)
+pppoe_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, u_int length)
 {
 	u_short pppoe_ver, pppoe_type, pppoe_code, pppoe_sessionid, pppoe_length;
 	const u_char *pppoe_packet, *pppoe_payload;
@@ -213,7 +217,7 @@ pppoe_print(register const u_char *bp, u_int length)
 		}
 	} else {
 		printf(" ");
-		ppp_print(pppoe_payload, pppoe_length);
+		ppp_print(ipdo, pppoe_payload, pppoe_length);
 	}
 	return;
 }

@@ -22,7 +22,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-802_11.c,v 1.6 2001-09-17 21:57:53 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-802_11.c,v 1.6.2.1 2001-10-01 04:02:19 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <pcap.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -112,7 +113,8 @@ static const char *reason_text[] = {
 	NULL
 };
 
-static int wep_print(const u_char *p,u_int length)
+static int wep_print(struct netdissect_options *ndo,
+		     const u_char *p,u_int length)
 {
 	u_int32_t iv;
 
@@ -127,7 +129,8 @@ static int wep_print(const u_char *p,u_int length)
 }
 
 
-static int parse_elements(struct mgmt_body_t *pbody,const u_char *p,int offset)
+static int parse_elements(struct netdissect_options *ndo,
+			  struct mgmt_body_t *pbody,const u_char *p,int offset)
 {
 	for (;;) {
 		if (!TTEST2(*(p + offset), 1))
@@ -211,7 +214,8 @@ static int parse_elements(struct mgmt_body_t *pbody,const u_char *p,int offset)
  * Print Handle functions for the management frame types
  *********************************************************************************/
 
-static int handle_beacon(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int handle_beacon(struct netdissect_options *ndo,
+			 u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p)
 {
 	struct mgmt_body_t pbody;
@@ -230,7 +234,7 @@ static int handle_beacon(u_int16_t fc, const struct mgmt_header_t *pmh,
 	pbody.capability_info = EXTRACT_LE_16BITS(p+offset);
 	offset += 2;
 
-	if (!parse_elements(&pbody,p,offset))
+	if (!parse_elements(ndo, &pbody,p,offset))
 		return 0;
 
 	RATEStoBUF(pbody, buf);
@@ -244,7 +248,8 @@ static int handle_beacon(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_assoc_request(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int handle_assoc_request(struct netdissect_options *ndo,
+				u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p)
 {
 	struct mgmt_body_t pbody;
@@ -261,7 +266,7 @@ static int handle_assoc_request(u_int16_t fc, const struct mgmt_header_t *pmh,
 	pbody.listen_interval = EXTRACT_LE_16BITS(p+offset);
 	offset += 2;
 
-	if (!parse_elements(&pbody,p,offset))
+	if (!parse_elements(ndo, &pbody,p,offset))
 		return 0;
 
 	RATEStoBUF(pbody,buf);
@@ -271,7 +276,8 @@ static int handle_assoc_request(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_assoc_response(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int handle_assoc_response(struct netdissect_options *ndo,
+				 u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p)
 {
 	struct mgmt_body_t pbody;
@@ -288,7 +294,7 @@ static int handle_assoc_response(u_int16_t fc, const struct mgmt_header_t *pmh,
 	pbody.aid = EXTRACT_LE_16BITS(p+offset);
 	offset += 2;
 
-	if (!parse_elements(&pbody,p,offset))
+	if (!parse_elements(ndo, &pbody,p,offset))
 		return 0;
 
 	printf("%s AID(%x) :%s: %s   ", subtype_text[FC_SUBTYPE(fc)],
@@ -300,8 +306,10 @@ static int handle_assoc_response(u_int16_t fc, const struct mgmt_header_t *pmh,
 }
 
 
-static int handle_reassoc_request(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_reassoc_request(struct netdissect_options *ndo,
+				  u_int16_t fc,
+				  const struct mgmt_header_t *pmh,
+				  const u_char *p)
 {
 	struct mgmt_body_t pbody;
 	int offset = 0;
@@ -317,22 +325,25 @@ static int handle_reassoc_request(u_int16_t fc, const struct mgmt_header_t *pmh,
 	memcpy(&pbody.ap,p+offset,6);
 	offset += 6;
 
-	if (!parse_elements(&pbody,p,offset))
+	if (!parse_elements(ndo, &pbody,p,offset))
 		return 0;
 
-	printf("%s (%s) AP : %s",subtype_text[FC_SUBTYPE(fc)], pbody.ssid.ssid, etheraddr_string( pbody.ap ));
+	printf("%s (%s) AP : %s",subtype_text[FC_SUBTYPE(fc)], pbody.ssid.ssid, etheraddr_string( ndo, pbody.ap ));
 
 	return 1;
 }
 
-static int handle_reassoc_response(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_reassoc_response(struct netdissect_options *ndo,
+				   u_int16_t fc,
+				   const struct mgmt_header_t *pmh,
+				   const u_char *p)
 {
 	/* Same as a Association Reponse */
-	return handle_assoc_response(fc,pmh,p);
+	return handle_assoc_response(ndo, fc,pmh,p);
 }
 
-static int handle_probe_request(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int handle_probe_request(struct netdissect_options *ndo,
+				u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p)
 {
 	struct mgmt_body_t  pbody;
@@ -343,7 +354,7 @@ static int handle_probe_request(u_int16_t fc, const struct mgmt_header_t *pmh,
 
 	memset(&pbody, 0, sizeof(pbody));
 
-	if (!parse_elements(&pbody, p, offset))
+	if (!parse_elements(ndo, &pbody, p, offset))
 		return 0;
 
 	RATEStoBUF(pbody, buf);
@@ -354,7 +365,8 @@ static int handle_probe_request(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_probe_response(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int handle_probe_response(struct netdissect_options *ndo,
+				 u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p)
 {
 	struct mgmt_body_t  pbody;
@@ -374,7 +386,7 @@ static int handle_probe_response(u_int16_t fc, const struct mgmt_header_t *pmh,
 	pbody.capability_info = EXTRACT_LE_16BITS(p+offset);
 	offset += 2;
 
-	if (!parse_elements(&pbody, p, offset))
+	if (!parse_elements(ndo, &pbody, p, offset))
 		return 0;
 
 	printf("%s (%s) CH: %x %s", subtype_text[FC_SUBTYPE(fc)], pbody.ssid.ssid,pbody.ds.channel,
@@ -383,16 +395,18 @@ static int handle_probe_response(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_atim(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_atim(struct netdissect_options *ndo,
+		       u_int16_t fc, const struct mgmt_header_t *pmh,
+		       const u_char *p)
 {
 	/* the frame body for ATIM is null. */
 	printf("ATIM");
 	return 1;
 }
 
-static int handle_disassoc(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_disassoc(struct netdissect_options *ndo,
+			   u_int16_t fc, const struct mgmt_header_t *pmh,
+			   const u_char *p)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -410,8 +424,9 @@ static int handle_disassoc(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_auth(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_auth(struct netdissect_options *ndo,
+		       u_int16_t fc, const struct mgmt_header_t *pmh,
+		       const u_char *p)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -427,7 +442,7 @@ static int handle_auth(u_int16_t fc, const struct mgmt_header_t *pmh,
 	pbody.status_code = EXTRACT_LE_16BITS(p + offset);
 	offset += 2;
 
-	if (!parse_elements(&pbody,p,offset))
+	if (!parse_elements(ndo, &pbody,p,offset))
 		return 0;
 
 	if ((pbody.auth_alg == 1) &&
@@ -449,8 +464,9 @@ static int handle_auth(u_int16_t fc, const struct mgmt_header_t *pmh,
 	return 1;
 }
 
-static int handle_deauth(u_int16_t fc, const struct mgmt_header_t *pmh,
-    const u_char *p)
+static int handle_deauth(struct netdissect_options *ndo,
+			 u_int16_t fc, const struct mgmt_header_t *pmh,
+			 const u_char *p)
 {
 	struct mgmt_body_t  pbody;
 	int offset = 0;
@@ -468,7 +484,7 @@ static int handle_deauth(u_int16_t fc, const struct mgmt_header_t *pmh,
 		    pbody.reason_code < 10 ? reason_text[pbody.reason_code] : "Reserved" );
 	} else {
 		printf("%s (%s): %s",
-		    subtype_text[FC_SUBTYPE(fc)], etheraddr_string(pmh->sa),
+		    subtype_text[FC_SUBTYPE(fc)],etheraddr_string(ndo,pmh->sa),
 		    pbody.reason_code < 10 ? reason_text[pbody.reason_code] : "Reserved" );
 	}
 
@@ -481,39 +497,40 @@ static int handle_deauth(u_int16_t fc, const struct mgmt_header_t *pmh,
  *********************************************************************************/
 
 
-static int mgmt_body_print(u_int16_t fc, const struct mgmt_header_t *pmh,
+static int mgmt_body_print(struct netdissect_options *ndo,
+			   u_int16_t fc, const struct mgmt_header_t *pmh,
     const u_char *p, u_int length)
 {
 	switch (FC_SUBTYPE(fc)) {
 	case ST_ASSOC_REQUEST:
-		return (handle_assoc_request(fc, pmh, p));
+		return (handle_assoc_request(ndo, fc, pmh, p));
 	case ST_ASSOC_RESPONSE:
-		return (handle_assoc_response(fc, pmh, p));
+		return (handle_assoc_response(ndo, fc, pmh, p));
 	case ST_REASSOC_REQUEST:
-		return (handle_reassoc_request(fc, pmh, p));
+		return (handle_reassoc_request(ndo, fc, pmh, p));
 	case ST_REASSOC_RESPONSE:
-		return (handle_reassoc_response(fc, pmh, p));
+		return (handle_reassoc_response(ndo, fc, pmh, p));
 	case ST_PROBE_REQUEST:
-		return (handle_probe_request(fc, pmh, p));
+		return (handle_probe_request(ndo, fc, pmh, p));
 	case ST_PROBE_RESPONSE:
-		return (handle_probe_response(fc, pmh, p));
+		return (handle_probe_response(ndo, fc, pmh, p));
 	case ST_BEACON:
-		return (handle_beacon(fc, pmh, p));
+		return (handle_beacon(ndo, fc, pmh, p));
 	case ST_ATIM:
-		return (handle_atim(fc, pmh, p));
+		return (handle_atim(ndo, fc, pmh, p));
 	case ST_DISASSOC:
-		return (handle_disassoc(fc, pmh, p));
+		return (handle_disassoc(ndo, fc, pmh, p));
 	case ST_AUTH:
 		if (!TTEST2(*p, 3))
 			return 0;
 		if ((p[0] == 0 ) && (p[1] == 0) && (p[2] == 0)) {
 			printf("Authentication (Shared-Key)-3 ");
-			return (wep_print(p, length));
+			return (wep_print(ndo, p, length));
 		}
 		else
-			return (handle_auth(fc, pmh, p));
+			return (handle_auth(ndo, fc, pmh, p));
 	case ST_DEAUTH:
-		return (handle_deauth(fc, pmh, p));
+		return (handle_deauth(ndo, fc, pmh, p));
 		break;
 	default:
 		printf("Unhandled Managment subtype(%x)",
@@ -527,7 +544,8 @@ static int mgmt_body_print(u_int16_t fc, const struct mgmt_header_t *pmh,
  * Handles printing all the control frame types
  *********************************************************************************/
 
-static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
+static int ctrl_body_print(struct netdissect_options *ndo,
+			   u_int16_t fc,const u_char *p, u_int length)
 {
 	switch (FC_SUBTYPE(fc)) {
 	case CTRL_PS_POLL:
@@ -543,7 +561,7 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
 			printf("Request-To-Send");
 		else
 			printf("Request-To-Send TA:%s ",
-			    etheraddr_string(((const struct ctrl_rts_t *)p)->ta));
+			    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ta));
 		break;
 	case CTRL_CTS:
 		if (!TTEST2(*p, CTRL_CTS_LEN))
@@ -552,7 +570,7 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
 			printf("Clear-To-Send");
 		else
 			printf("Clear-To-Send RA:%s ",
-			    etheraddr_string(((const struct ctrl_cts_t *)p)->ra));
+			    etheraddr_string(ndo,((const struct ctrl_cts_t *)p)->ra));
 		break;
 	case CTRL_ACK:
 		if (!TTEST2(*p, CTRL_ACK_LEN))
@@ -561,7 +579,7 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
 			printf("Acknowledgment");
 		else
 			printf("Acknowledgment RA:%s ",
-			    etheraddr_string(((const struct ctrl_ack_t *)p)->ra));
+			    etheraddr_string(ndo,((const struct ctrl_ack_t *)p)->ra));
 		break;
 	case CTRL_CF_END:
 		if (!TTEST2(*p, CTRL_END_LEN))
@@ -570,7 +588,7 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
 			printf("CF-End");
 		else
 			printf("CF-End RA:%s ",
-			    etheraddr_string(((const struct ctrl_end_t *)p)->ra));
+			    etheraddr_string(ndo,((const struct ctrl_end_t *)p)->ra));
 		break;
 	case CTRL_END_ACK:
 		if (!TTEST2(*p, CTRL_END_ACK_LEN))
@@ -579,7 +597,7 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
 			printf("CF-End+CF-Ack");
 		else
 			printf("CF-End+CF-Ack RA:%s ",
-			    etheraddr_string(((const struct ctrl_end_ack_t *)p)->ra));
+			    etheraddr_string(ndo,((const struct ctrl_end_ack_t *)p)->ra));
 		break;
 	default:
 		printf("(B) Unknown Ctrl Subtype");
@@ -603,7 +621,8 @@ static int ctrl_body_print(u_int16_t fc,const u_char *p, u_int length)
  *    1    |  1      |  RA    | TA     | DA     | SA
  */
 
-static void data_header_print(u_int16_t fc,const u_char *p, u_int length)
+static void data_header_print(struct netdissect_options *ndo,
+			      u_int16_t fc,const u_char *p, u_int length)
 {
 #define ADDR1  (p + 4)
 #define ADDR2  (p + 10)
@@ -613,21 +632,21 @@ static void data_header_print(u_int16_t fc,const u_char *p, u_int length)
 	if (!FC_TO_DS(fc)) {
 		if (!FC_FROM_DS(fc))
 			printf("DA:%s SA:%s BSSID:%s ",
-			    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
-			    etheraddr_string(ADDR3));
+			    etheraddr_string(ndo,ADDR1), etheraddr_string(ndo,ADDR2),
+			    etheraddr_string(ndo,ADDR3));
 		else
 			printf("DA:%s BSSID:%s SA:%s ",
-			    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
-			    etheraddr_string(ADDR3));
+			    etheraddr_string(ndo,ADDR1), etheraddr_string(ndo,ADDR2),
+			    etheraddr_string(ndo,ADDR3));
 	} else {
 		if (!FC_FROM_DS(fc))
 			printf("BSSID:%s SA:%s DA:%s ",
-			    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
-			    etheraddr_string(ADDR3));
+			    etheraddr_string(ndo,ADDR1), etheraddr_string(ndo,ADDR2),
+			    etheraddr_string(ndo,ADDR3));
 		else
 			printf("RA:%s TA:%s DA:%s SA:%s ",
-			    etheraddr_string(ADDR1), etheraddr_string(ADDR2),
-			    etheraddr_string(ADDR3), etheraddr_string(ADDR4));
+			    etheraddr_string(ndo,ADDR1), etheraddr_string(ndo,ADDR2),
+			    etheraddr_string(ndo,ADDR3), etheraddr_string(ndo,ADDR4));
 	}
 
 #undef ADDR1
@@ -637,45 +656,47 @@ static void data_header_print(u_int16_t fc,const u_char *p, u_int length)
 }
 
 
-static void mgmt_header_print(const u_char *p, u_int length)
+static void mgmt_header_print(struct netdissect_options *ndo,
+			      const u_char *p, u_int length)
 {
 	const struct mgmt_header_t *hp = (const struct mgmt_header_t *) p;
 
 	printf("BSSID:%s DA:%s SA:%s ",
-	    etheraddr_string((hp)->bssid), etheraddr_string((hp)->da),
-	    etheraddr_string((hp)->sa));
+	    etheraddr_string(ndo,(hp)->bssid), etheraddr_string(ndo,(hp)->da),
+	    etheraddr_string(ndo,(hp)->sa));
 }
 
-static void ctrl_header_print(u_int16_t fc,const u_char *p, u_int length)
+static void ctrl_header_print(struct netdissect_options *ndo,
+			      u_int16_t fc,const u_char *p, u_int length)
 {
 	switch (FC_SUBTYPE(fc)) {
 	case CTRL_PS_POLL:
 		printf("BSSID:%s TA:%s ",
-		    etheraddr_string(((const struct ctrl_ps_poll_t *)p)->bssid),
-		    etheraddr_string(((const struct ctrl_ps_poll_t *)p)->ta));
+		    etheraddr_string(ndo, ((const struct ctrl_ps_poll_t *)p)->bssid),
+		    etheraddr_string(ndo, ((const struct ctrl_ps_poll_t *)p)->ta));
 		break;
 	case CTRL_RTS:
 		printf("RA:%s TA:%s ",
-		    etheraddr_string(((const struct ctrl_rts_t *)p)->ra),
-		    etheraddr_string(((const struct ctrl_rts_t *)p)->ta));
+		    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ra),
+		    etheraddr_string(ndo, ((const struct ctrl_rts_t *)p)->ta));
 		break;
 	case CTRL_CTS:
 		printf("RA:%s ",
-		    etheraddr_string(((const struct ctrl_cts_t *)p)->ra));
+		    etheraddr_string(ndo, ((const struct ctrl_cts_t *)p)->ra));
 		break;
 	case CTRL_ACK:
 		printf("RA:%s ",
-		    etheraddr_string(((const struct ctrl_ack_t *)p)->ra));
+		    etheraddr_string(ndo, ((const struct ctrl_ack_t *)p)->ra));
 		break;
 	case CTRL_CF_END:
 		printf("RA:%s BSSID:%s ",
-		    etheraddr_string(((const struct ctrl_end_t *)p)->ra),
-		    etheraddr_string(((const struct ctrl_end_t *)p)->bssid));
+		    etheraddr_string(ndo, ((const struct ctrl_end_t *)p)->ra),
+		    etheraddr_string(ndo, ((const struct ctrl_end_t *)p)->bssid));
 		break;
 	case CTRL_END_ACK:
 		printf("RA:%s BSSID:%s ",
-		    etheraddr_string(((const struct ctrl_end_ack_t *)p)->ra),
-		    etheraddr_string(((const struct ctrl_end_ack_t *)p)->bssid));
+		    etheraddr_string(ndo, ((const struct ctrl_end_ack_t *)p)->ra),
+		    etheraddr_string(ndo, ((const struct ctrl_end_ack_t *)p)->bssid));
 		break;
 	default:
 		printf("(H) Unknown Ctrl Subtype");
@@ -734,19 +755,20 @@ static int GetHeaderLength(u_int16_t fc)
  * Print the 802.11 MAC header
  */
 static inline void
-ieee_802_11_print(u_int16_t fc, const u_char *p, u_int length)
+ieee_802_11_print(struct netdissect_options *ndo,
+		  u_int16_t fc, const u_char *p, u_int length)
 {
 	switch (FC_TYPE(fc)) {
 	case T_MGMT:
-		mgmt_header_print(p, length);
+		mgmt_header_print(ndo, p, length);
 		break;
 
 	case T_CTRL:
-		ctrl_header_print(fc, p, length);
+		ctrl_header_print(ndo, fc, p, length);
 		break;
 
 	case T_DATA:
-		data_header_print(fc, p, length);
+		data_header_print(ndo, fc, p, length);
 		break;
 
 	default:
@@ -770,9 +792,10 @@ ieee802_11_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_int16_t fc;
 	u_int HEADER_LENGTH;
 	u_short extracted_ethertype;
+	struct netdissect_options *ndo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ndo, &h->ts);
 
 	if (caplen < IEEE802_11_FC_LEN) {
 		printf("[|802.11]");
@@ -782,7 +805,7 @@ ieee802_11_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	fc=EXTRACT_LE_16BITS(p);
 
 	if (eflag)
-		ieee_802_11_print(fc, p, length);
+		ieee_802_11_print(ndo, fc, p, length);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -800,7 +823,8 @@ ieee802_11_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 
 	switch (FC_TYPE(fc)) {
 	case T_MGMT:
-		if (!mgmt_body_print(fc, (const struct mgmt_header_t *)packetp,
+		if (!mgmt_body_print(ndo, fc,
+				     (const struct mgmt_header_t *)packetp,
 		    p, length)) {
 			printf("[|802.11]");
 			goto out;
@@ -808,7 +832,8 @@ ieee802_11_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		break;
 
 	case T_CTRL:
-		if (!ctrl_body_print(fc, p - HEADER_LENGTH,
+		if (!ctrl_body_print(ndo,
+				     fc, p - HEADER_LENGTH,
 		    length + HEADER_LENGTH)) {
 			printf("[|802.11]");
 			goto out;
@@ -818,23 +843,25 @@ ieee802_11_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	case T_DATA:
 		/* There may be a problem w/ AP not having this bit set */
  		if (FC_WEP(fc)) {
-			if (!wep_print(p,length)) {
+			if (!wep_print(ndo, p,length)) {
 				printf("[|802.11]");
 				goto out;
 			}
 		} else {
-			if (llc_print(p, length, caplen, packetp + 10,
+			if (llc_print(ndo, p, length, caplen, packetp + 10,
 			    packetp + 4, &extracted_ethertype) == 0) {
 				/*
 				 * Some kinds of LLC packet we cannot
 				 * handle intelligently
 				 */
 				if (!eflag)
-					ieee_802_11_print(fc, p - HEADER_LENGTH,
+					ieee_802_11_print(ndo,
+							  fc, p - HEADER_LENGTH,
 					    length + HEADER_LENGTH);
 				if (extracted_ethertype) {
 					printf("(LLC %s) ",
-					    etherproto_string(htons(extracted_ethertype)));
+					    etherproto_string(ndo,
+							      htons(extracted_ethertype)));
 				}
 				if (!xflag && !qflag)
 					default_print(p, caplen);

@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ospf.c,v 1.31 2001-06-28 04:34:51 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ospf.c,v 1.31.2.1 2001-10-01 04:02:43 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <ctype.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -81,11 +82,13 @@ static char tstr[] = " [|ospf]";
 /* Forwards */
 static inline void ospf_print_seqage(u_int32_t, time_t);
 static inline void ospf_print_bits(const struct bits *, u_char);
-static void ospf_print_ls_type(u_int, const struct in_addr *,
-    const struct in_addr *, const char *);
-static int ospf_print_lshdr(const struct lsa_hdr *);
-static int ospf_print_lsa(const struct lsa *);
-static int ospf_decode_v2(const struct ospfhdr *, const u_char *);
+static void ospf_print_ls_type(struct netdissect_options *,
+			       u_int, const struct in_addr *,
+			       const struct in_addr *, const char *);
+static int ospf_print_lshdr(struct netdissect_options *,const struct lsa_hdr *);
+static int ospf_print_lsa(struct netdissect_options *,const struct lsa *);
+static int ospf_decode_v2(struct netdissect_options *,
+			  const struct ospfhdr *, const u_char *);
 
 static inline void
 ospf_print_seqage(register u_int32_t seq, register time_t us)
@@ -119,9 +122,11 @@ ospf_print_bits(register const struct bits *bp, register u_char options)
 }
 
 static void
-ospf_print_ls_type(register u_int ls_type,
-    register const struct in_addr *ls_stateid,
-    register const struct in_addr *ls_router, register const char *fmt)
+ospf_print_ls_type(struct netdissect_options *ipdo,
+		   register u_int ls_type,
+		   register const struct in_addr *ls_stateid,
+		   register const struct in_addr *ls_router,
+		   register const char *fmt)
 {
 
 	switch (ls_type) {
@@ -168,7 +173,8 @@ ospf_print_ls_type(register u_int ls_type,
 }
 
 static int
-ospf_print_lshdr(register const struct lsa_hdr *lshp)
+ospf_print_lshdr(struct netdissect_options *ipdo,
+		 register const struct lsa_hdr *lshp)
 {
 
 	TCHECK(lshp->ls_type);
@@ -178,8 +184,9 @@ ospf_print_lshdr(register const struct lsa_hdr *lshp)
 	ospf_print_bits(ospf_option_bits, lshp->ls_options);
 	TCHECK(lshp->ls_seq);
 	ospf_print_seqage(ntohl(lshp->ls_seq), ntohs(lshp->ls_age));
-	ospf_print_ls_type(lshp->ls_type, &lshp->ls_stateid, &lshp->ls_router,
-	    "ls_type %d");
+	ospf_print_ls_type(ipdo, lshp->ls_type,
+			   &lshp->ls_stateid, &lshp->ls_router,
+			   "ls_type %d");
 
 	return (0);
 trunc:
@@ -191,7 +198,8 @@ trunc:
  * Print a single link state advertisement.  If truncated return 1, else 0.
  */
 static int
-ospf_print_lsa(register const struct lsa *lsap)
+ospf_print_lsa(struct netdissect_options *ipdo,
+	       register const struct lsa *lsap)
 {
 	register const u_char *ls_end;
 	register const struct rlalink *rlp;
@@ -202,7 +210,7 @@ ospf_print_lsa(register const struct lsa *lsap)
 	register const u_int32_t *lp;
 	register int j, k;
 
-	if (ospf_print_lshdr(&lsap->ls_hdr))
+	if (ospf_print_lshdr(ipdo, &lsap->ls_hdr))
 		return (1);
 	TCHECK(lsap->ls_hdr.ls_length);
 	ls_end = (u_char *)lsap + ntohs(lsap->ls_hdr.ls_length);
@@ -364,8 +372,9 @@ trunc:
 }
 
 static int
-ospf_decode_v2(register const struct ospfhdr *op,
-    register const u_char *dataend)
+ospf_decode_v2(struct netdissect_options *ipdo,
+	       register const struct ospfhdr *op,
+	       register const u_char *dataend)
 {
 	register const struct in_addr *ap;
 	register const struct lsr *lsrp;
@@ -438,7 +447,7 @@ ospf_decode_v2(register const struct ospfhdr *op,
 			/* Print all the LS adv's */
 			lshp = op->ospf_db.db_lshdr;
 
-			while (!ospf_print_lshdr(lshp)) {
+			while (!ospf_print_lshdr(ipdo, lshp)) {
 							/* { (ctags) */
 				printf(" }");
 				++lshp;
@@ -452,10 +461,11 @@ ospf_decode_v2(register const struct ospfhdr *op,
 			while ((u_char *)lsrp < dataend) {
 				TCHECK(*lsrp);
 				printf(" {");		/* } (ctags) */
-				ospf_print_ls_type(ntohl(lsrp->ls_type),
-				    &lsrp->ls_stateid,
-				    &lsrp->ls_router,
-				    "LinkStateType %d");
+				ospf_print_ls_type(ipdo,
+						   ntohl(lsrp->ls_type),
+						   &lsrp->ls_stateid,
+						   &lsrp->ls_router,
+						   "LinkStateType %d");
 							/* { (ctags) */
 				printf(" }");
 				++lsrp;
@@ -469,7 +479,7 @@ ospf_decode_v2(register const struct ospfhdr *op,
 			TCHECK(op->ospf_lsu.lsu_count);
 			i = ntohl(op->ospf_lsu.lsu_count);
 			while (i--) {
-				if (ospf_print_lsa(lsap))
+				if (ospf_print_lsa(ipdo, lsap))
 					goto trunc;
 				lsap = (struct lsa *)((u_char *)lsap +
 				    ntohs(lsap->ls_hdr.ls_length));
@@ -482,7 +492,7 @@ ospf_decode_v2(register const struct ospfhdr *op,
 		if (vflag) {
 			lshp = op->ospf_lsa.lsa_lshdr;
 
-			while (!ospf_print_lshdr(lshp)) {
+			while (!ospf_print_lshdr(ipdo, lshp)) {
 							/* { (ctags) */
 				printf(" }");
 				++lshp;
@@ -500,8 +510,9 @@ trunc:
 }
 
 void
-ospf_print(register const u_char *bp, register u_int length,
-    register const u_char *bp2)
+ospf_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, register u_int length,
+	   register const u_char *bp2)
 {
 	register const struct ospfhdr *op;
 	register const struct ip *ip;
@@ -573,7 +584,7 @@ ospf_print(register const u_char *bp, register u_int length,
 
 	case 2:
 		/* ospf version 2 */
-		if (ospf_decode_v2(op, dataend))
+		if (ospf_decode_v2(ipdo, op, dataend))
 			goto trunc;
 		break;
 

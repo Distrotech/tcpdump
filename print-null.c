@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-null.c,v 1.41 2001-07-05 18:54:15 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-null.c,v 1.41.2.1 2001-10-01 04:02:43 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -43,6 +43,7 @@ struct rtentry;
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -68,7 +69,8 @@ struct rtentry;
 #define	NULL_HDRLEN 4
 
 static void
-null_print(u_int family, u_int length)
+null_print(struct netdissect_options *ipdo,
+	   u_int family, u_int length)
 {
 	if (nflag)
 		printf("AF %u ", family);
@@ -112,9 +114,10 @@ null_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_int caplen = h->caplen;
 	const struct ip *ip;
 	u_int family;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	memcpy((char *)&family, (char *)p, sizeof(family));
 
@@ -142,15 +145,15 @@ null_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	ip = (struct ip *)(p + NULL_HDRLEN);
 
 	if (eflag)
-		null_print(family, length);
+		null_print(ipdo, family, length);
 
 	switch (IP_V(ip)) {
 	case 4:
-		ip_print((const u_char *)ip, length);
+		ip_print(ipdo, (const u_char *)ip, length);
 		break;
 #ifdef INET6
 	case 6:
-		ip6_print((const u_char *)ip, length);
+		ip6_print(ipdo, (const u_char *)ip, length);
 		break;
 #endif /* INET6 */
 	default:

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-arp.c,v 1.51 2001-09-17 21:57:54 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-arp.c,v 1.51.2.1 2001-10-01 04:02:21 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -36,6 +36,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ether.h"
@@ -101,7 +102,8 @@ struct	arphdr {
 static u_char ezero[6];
 
 void
-arp_print(const u_char *bp, u_int length, u_int caplen)
+arp_print(struct netdissect_options *ipdo,
+	  const u_char *bp, u_int length, u_int caplen)
 {
 	const struct arphdr *ap;
 	u_short pro, hrd, op;
@@ -131,24 +133,25 @@ arp_print(const u_char *bp, u_int length, u_int caplen)
 		(void)printf("arp who-has %s", ipaddr_string(TPA(ap)));
 		if (memcmp((const char *)ezero, (const char *)THA(ap), HLN(ap)) != 0)
 			(void)printf(" (%s)",
-			    linkaddr_string(THA(ap), HLN(ap)));
+				     linkaddr_string(ndo, THA(ap), HLN(ap)));
+
 		(void)printf(" tell %s", ipaddr_string(SPA(ap)));
 		break;
 
 	case ARPOP_REPLY:
 		(void)printf("arp reply %s", ipaddr_string(SPA(ap)));
-		(void)printf(" is-at %s", linkaddr_string(SHA(ap), HLN(ap)));
+		(void)printf(" is-at %s", linkaddr_string(ndo, SHA(ap), HLN(ap)));
 		break;
 
 	case ARPOP_REVREQUEST:
 		(void)printf("rarp who-is %s tell %s",
-			linkaddr_string(THA(ap), HLN(ap)),
-			linkaddr_string(SHA(ap), HLN(ap)));
+			linkaddr_string(ndo, THA(ap), HLN(ap)),
+			linkaddr_string(ndo, SHA(ap), HLN(ap)));
 		break;
 
 	case ARPOP_REVREPLY:
 		(void)printf("rarp reply %s at %s",
-			linkaddr_string(THA(ap), HLN(ap)),
+			linkaddr_string(ndo, THA(ap), HLN(ap)),
 			ipaddr_string(TPA(ap)));
 		break;
 

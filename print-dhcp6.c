@@ -29,7 +29,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-dhcp6.c,v 1.14 2001-09-17 21:57:59 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-dhcp6.c,v 1.14.2.1 2001-10-01 04:02:26 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -50,6 +50,7 @@ struct rtentry;
 #include <string.h>
 #include <arpa/inet.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "dhcp6.h"
@@ -229,7 +230,8 @@ trunc:
  * Print dhcp6 requests
  */
 void
-dhcp6_print(register const u_char *cp, u_int length,
+dhcp6_print(struct netdissect_options *ndo,
+	    register const u_char *cp, u_int length,
 	    u_int16_t sport, u_int16_t dport)
 {
 	union dhcp6 *dh6;

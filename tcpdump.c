@@ -24,7 +24,7 @@ static const char copyright[] =
     "@(#) Copyright (c) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 2000\n\
 The Regents of the University of California.  All rights reserved.\n";
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/tcpdump.c,v 1.167 2001-10-01 01:12:01 mcr Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/tcpdump.c,v 1.167.2.1 2001-10-01 04:03:00 mcr Exp $ (LBL)";
 #endif
 
 /*
@@ -52,56 +52,35 @@ static const char rcsid[] =
 #include <unistd.h>
 #include <ctype.h>
 
-
 #include "interface.h"
 #include "addrtoname.h"
 #include "machdep.h"
 #include "setsignal.h"
 #include "gmt2local.h"
 
-int aflag;			/* translate network and broadcast addresses */
-int dflag;			/* print filter code */
-int eflag;			/* print ethernet header */
-int fflag;			/* don't translate "foreign" IP address */
-int nflag;			/* leave addresses as numbers */
-int Nflag;			/* remove domains from printed host names */
+struct netdissect_options gipdo;
+
+/* these are tcpdump specific flags, not dissectors */
 int Oflag = 1;			/* run filter code optimizer */
 int pflag;			/* don't go promiscuous */
-int qflag;			/* quick (shorter) output */
-int Rflag = 1;			/* print sequence # field in AH/ESP*/
-int sflag = 0;			/* use the libsmi to translate OIDs */
-int Sflag;			/* print raw TCP sequence numbers */
-int tflag = 1;			/* print packet arrival time */
-int uflag = 0;			/* Print undecoded NFS handles */
-int vflag;			/* verbose */
-int xflag;			/* print packet in hex */
-int Xflag;			/* print packet in ascii as well as hex */
-off_t Cflag = 0;                /* rotate dump files after this many bytes */
-
-char *espsecret = NULL;		/* ESP secret key */
-
-int packettype;
-
-int infodelay;
+int Cflag;                      /* number of bytes before one roles dump file*/
 int infoprint;
 
-char *program_name;
 char *WFileName;
-
-int32_t thiszone;		/* seconds offset from gmt to local time */
 
 /* Forwards */
 static RETSIGTYPE cleanup(int);
-static void usage(void) __attribute__((noreturn));
+static void usage(struct netdissect_options *) __attribute__((noreturn));
 
 extern void dump_and_trunc(u_char *user, const struct pcap_pkthdr *h, const u_char *sp);
+
+void tcpdump_info(struct netdissect_options *, register int verbose);
 
 #ifdef SIGINFO
 RETSIGTYPE requestinfo(int);
 #endif
 
 /* Length of saved portion of packet. */
-int snaplen = DEFAULT_SNAPLEN;
 
 struct printer {
 	pcap_handler f;
@@ -157,7 +136,7 @@ static struct printer printers[] = {
 };
 
 static pcap_handler
-lookup_printer(int type)
+lookup_printer(struct netdissect_options *ipdo, int type)
 {
 	struct printer *p;
 
@@ -165,7 +144,7 @@ lookup_printer(int type)
 		if (type == p->type)
 			return p->f;
 
-	error("unknown data link type %d", type);
+	error(ipdo,"unknown data link type %d", type);
 	/* NOTREACHED */
 }
 
@@ -188,18 +167,20 @@ main(int argc, char **argv)
 	u_char *pcap_userdata;
 	char ebuf[PCAP_ERRBUF_SIZE];
 
+	gipdo.ndo_snaplen = DEFAULT_SNAPLEN;
+
 	cnt = -1;
 	device = NULL;
 	infile = NULL;
 	RFileName = NULL;
 	WFileName = NULL;
 	if ((cp = strrchr(argv[0], '/')) != NULL)
-		program_name = cp + 1;
+		gipdo.ndo_program_name = cp + 1;
 	else
-		program_name = argv[0];
+		gipdo.ndo_program_name = argv[0];
 
 	if (abort_on_misalignment(ebuf, sizeof(ebuf)) < 0)
-		error("%s", ebuf);
+		error(&gipdo,"%s", ebuf);
 
 #ifdef LIBSMI
 	smiInit("tcpdump");
@@ -211,38 +192,38 @@ main(int argc, char **argv)
 		switch (op) {
 
 		case 'a':
-			++aflag;
+			++gipdo.ndo_aflag;
 			break;
 
 		case 'c':
 			cnt = atoi(optarg);
 			if (cnt <= 0)
-				error("invalid packet count %s", optarg);
+				error(&gipdo,"invalid packet count %s", optarg);
 			break;
 
 		case 'C':
 			Cflag = atoi(optarg) * 1000000;
 			if (Cflag < 0) 
-				error("invalid file size %s", optarg);
+				error(&gipdo, "invalid file size %s", optarg);
 			break;
 
 		case 'd':
-			++dflag;
+			++gipdo.ndo_dflag;
 			break;
 
 		case 'e':
-			++eflag;
+			++gipdo.ndo_eflag;
 			break;
 
 		case 'E':
 #ifndef HAVE_LIBCRYPTO
-			warning("crypto code not compiled in");
+			warning(&gipdo,"crypto code not compiled in");
 #endif
-			espsecret = optarg;
+			gipdo.ndo_espsecret = optarg;
 			break;
 
 		case 'f':
-			++fflag;
+			++gipdo.ndo_fflag;
 			break;
 
 		case 'F':
@@ -262,22 +243,22 @@ main(int argc, char **argv)
 			break;
 
 		case 'n':
-			++nflag;
+			++gipdo.ndo_nflag;
 			break;
 
 		case 'N':
-			++Nflag;
+			++gipdo.ndo_Nflag;
 			break;
 
 		case 'm':
 #ifdef LIBSMI
 		        if (smiLoadModule(optarg) == 0) {
-				error("could not load MIB module %s", optarg);
+				error(&gipdo,"could not load MIB module %s", optarg);
 		        }
 			sflag = 1;
 #else
 			(void)fprintf(stderr, "%s: ignoring option `-m %s' ",
-				      program_name, optarg);
+				      gipdo.ndo_program_name, optarg);
 			(void)fprintf(stderr, "(no libsmi support)\n");
 #endif
 			
@@ -290,7 +271,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'q':
-			++qflag;
+			++gipdo.ndo_qflag;
 			break;
 
 		case 'r':
@@ -298,54 +279,55 @@ main(int argc, char **argv)
 			break;
 
 		case 'R':
-			Rflag = 0;
+			gipdo.ndo_Rflag = 0;
 			break;
 
 		case 's': {
 			char *end;
 
-			snaplen = strtol(optarg, &end, 0);
+			gipdo.ndo_snaplen = strtol(optarg, &end, 0);
 			if (optarg == end || *end != '\0'
-			    || snaplen < 0 || snaplen > 65535)
-				error("invalid snaplen %s", optarg);
-			else if (snaplen == 0)
-				snaplen = 65535;
+			    || gipdo.ndo_snaplen < 0
+			    || gipdo.ndo_snaplen > 65535)
+				error(&gipdo,"invalid snaplen %s", optarg);
+			else if (gipdo.ndo_snaplen == 0)
+				gipdo.ndo_snaplen = 65535;
 			break;
 		}
 
 		case 'S':
-			++Sflag;
+			++gipdo.ndo_Sflag;
 			break;
 
 		case 't':
-			--tflag;
+			--gipdo.ndo_tflag;
 			break;
 
 		case 'T':
 			if (strcasecmp(optarg, "vat") == 0)
-				packettype = PT_VAT;
+				gipdo.ndo_packettype = PT_VAT;
 			else if (strcasecmp(optarg, "wb") == 0)
-				packettype = PT_WB;
+				gipdo.ndo_packettype = PT_WB;
 			else if (strcasecmp(optarg, "rpc") == 0)
-				packettype = PT_RPC;
+				gipdo.ndo_packettype = PT_RPC;
 			else if (strcasecmp(optarg, "rtp") == 0)
-				packettype = PT_RTP;
+				gipdo.ndo_packettype = PT_RTP;
 			else if (strcasecmp(optarg, "rtcp") == 0)
-				packettype = PT_RTCP;
+				gipdo.ndo_packettype = PT_RTCP;
 			else if (strcasecmp(optarg, "snmp") == 0)
-				packettype = PT_SNMP;
+				gipdo.ndo_packettype = PT_SNMP;
 			else if (strcasecmp(optarg, "cnfp") == 0)
-				packettype = PT_CNFP;
+				gipdo.ndo_packettype = PT_CNFP;
 			else
-				error("unknown packet type `%s'", optarg);
+				error(&gipdo,"unknown packet type `%s'", optarg);
 			break;
 
 		case 'u':
-			++uflag;
+			++gipdo.ndo_uflag;
 			break;
 			
 		case 'v':
-			++vflag;
+			++gipdo.ndo_vflag;
 			break;
 
 		case 'w':
@@ -353,12 +335,12 @@ main(int argc, char **argv)
 			break;
 
 		case 'x':
-			++xflag;
+			++gipdo.ndo_xflag;
 			break;
 
 		case 'X':
-    		        ++xflag;
-			++Xflag;
+    		        ++gipdo.ndo_xflag;
+			++gipdo.ndo_Xflag;
 			break;
 
 #ifdef YYDEBUG
@@ -371,15 +353,15 @@ main(int argc, char **argv)
 			break;
 #endif
 		default:
-			usage();
+			usage(&gipdo);
 			/* NOTREACHED */
 		}
 
-	if (aflag && nflag)
-		error("-a and -n options are incompatible");
+	if (gipdo.ndo_aflag && gipdo.ndo_nflag)
+		error(&gipdo,"-a and -n options are incompatible");
 
-	if (tflag > 0)
-		thiszone = gmt2local(0);
+	if (gipdo.ndo_tflag > 0)
+		gipdo.ndo_thiszone = gmt2local(0);
 
 	if (RFileName != NULL) {
 		/*
@@ -391,32 +373,34 @@ main(int argc, char **argv)
 
 		pd = pcap_open_offline(RFileName, ebuf);
 		if (pd == NULL)
-			error("%s", ebuf);
+			error(&gipdo,"%s", ebuf);
 		localnet = 0;
 		netmask = 0;
-		if (fflag != 0)
-			error("-f and -r options are incompatible");
+		if (gipdo.ndo_fflag != 0)
+			error(&gipdo,"-f and -r options are incompatible");
 	} else {
 		if (device == NULL) {
 			device = pcap_lookupdev(ebuf);
 			if (device == NULL)
-				error("%s", ebuf);
+				error(&gipdo,"%s", ebuf);
 		}
 		*ebuf = '\0';
-		pd = pcap_open_live(device, snaplen, !pflag, 1000, ebuf);
+		pd = pcap_open_live(device, gipdo.ndo_snaplen,
+				    !pflag, 1000, ebuf);
 		if (pd == NULL)
-			error("%s", ebuf);
+			error(&gipdo,"%s", ebuf);
 		else if (*ebuf)
-			warning("%s", ebuf);
+			warning(&gipdo, "%s", ebuf);
 		i = pcap_snapshot(pd);
-		if (snaplen < i) {
-			warning("snaplen raised from %d to %d", snaplen, i);
-			snaplen = i;
+		if (gipdo.ndo_snaplen < i) {
+			warning(&gipdo,"snaplen raised from %d to %d",
+				gipdo.ndo_snaplen, i);
+			gipdo.ndo_snaplen = i;
 		}
 		if (pcap_lookupnet(device, &localnet, &netmask, ebuf) < 0) {
 			localnet = 0;
 			netmask = 0;
-			warning("%s", ebuf);
+			warning(&gipdo,"%s", ebuf);
 		}
 		/*
 		 * Let user own process after socket has been opened.
@@ -424,17 +408,18 @@ main(int argc, char **argv)
 		setuid(getuid());
 	}
 	if (infile)
-		cmdbuf = read_infile(infile);
+		cmdbuf = read_infile(&gipdo, infile);
 	else
-		cmdbuf = copy_argv(&argv[optind]);
+		cmdbuf = copy_argv(&gipdo, &argv[optind]);
 
-	if (pcap_compile(pd, &fcode, cmdbuf, Oflag, netmask) < 0)
-		error("%s", pcap_geterr(pd));
-	if (dflag) {
-		bpf_dump(&fcode, dflag);
+	if (pcap_compile(pd, &fcode, cmdbuf,
+			 Oflag, netmask) < 0)
+		error(&gipdo,"%s", pcap_geterr(pd));
+	if (gipdo.ndo_dflag) {
+		bpf_dump(&fcode, gipdo.ndo_dflag);
 		exit(0);
 	}
-	init_addrtoname(localnet, netmask);
+	init_addrtoname(&gipdo, localnet, netmask);
 
 	(void)setsignal(SIGTERM, cleanup);
 	(void)setsignal(SIGINT, cleanup);
@@ -442,17 +427,21 @@ main(int argc, char **argv)
 	if ((oldhandler = setsignal(SIGHUP, cleanup)) != SIG_DFL)
 		(void)setsignal(SIGHUP, oldhandler);
 
+	/* setup default printer */
+	gipdo.ndo_default_print = default_print;
+	gipdo.ndo_info = tcpdump_info;
+
 	if (pcap_setfilter(pd, &fcode) < 0)
-		error("%s", pcap_geterr(pd));
+		error(&gipdo,"%s", pcap_geterr(pd));
 	if (WFileName) {
 		pcap_dumper_t *p = pcap_dump_open(pd, WFileName);
 		if (p == NULL)
-			error("%s", pcap_geterr(pd));
+			error(&gipdo,"%s", pcap_geterr(pd));
 		printer = dump_and_trunc;
 		pcap_userdata = (u_char *)p;
 	} else {
-		printer = lookup_printer(pcap_datalink(pd));
-		pcap_userdata = 0;
+		printer = lookup_printer(&gipdo, pcap_datalink(pd));
+		pcap_userdata = (u_char *)&gipdo;
 #ifdef SIGINFO
 		(void)setsignal(SIGINFO, requestinfo);
 #endif
@@ -460,12 +449,12 @@ main(int argc, char **argv)
 
 	if (RFileName == NULL) {
 		(void)fprintf(stderr, "%s: listening on %s\n",
-		    program_name, device);
+			      gipdo.ndo_program_name, device);
 		(void)fflush(stderr);
 	}
 	if (pcap_loop(pd, cnt, printer, pcap_userdata) < 0) {
 		(void)fprintf(stderr, "%s: pcap_loop: %s\n",
-		    program_name, pcap_geterr(pd));
+			      gipdo.ndo_program_name, pcap_geterr(pd));
 		exit(1);
 	}
 	pcap_close(pd);
@@ -481,13 +470,13 @@ cleanup(int signo)
 	if (pd != NULL && pcap_file(pd) == NULL) {
 		(void)fflush(stdout);
 		putc('\n', stderr);
-		info(1);
+		tcpdump_info(&gipdo, 1);
 	}
 	exit(0);
 }
 
 void
-info(register int verbose)
+tcpdump_info(struct netdissect_options *ndo, register int verbose)
 {
 	struct pcap_stat stat;
 
@@ -496,7 +485,7 @@ info(register int verbose)
 		return;
 	}
 	if (!verbose)
-		fprintf(stderr, "%s: ", program_name);
+		fprintf(stderr, "%s: ", ndo->ndo_program_name);
 	(void)fprintf(stderr, "%d packets received by filter", stat.ps_recv);
 	if (!verbose)
 		fputs(", ", stderr);
@@ -508,13 +497,14 @@ info(register int verbose)
 
 /* Like default_print() but data need not be aligned */
 void
-default_print_unaligned(register const u_char *cp, register u_int length)
+default_print_unaligned(struct netdissect_options *ipdo,
+			register const u_char *cp, register u_int length)
 {
 	register u_int i, s;
 	register int nshorts;
 
-	if (Xflag) {
-		ascii_print(cp, length);
+	if (ipdo->ndo_Xflag) {
+		ascii_print(ipdo, cp, length);
 		return;
 	}
 	nshorts = (u_int) length / sizeof(u_short);
@@ -536,31 +526,35 @@ default_print_unaligned(register const u_char *cp, register u_int length)
  * By default, print the packet out in hex.
  */
 void
-default_print(register const u_char *bp, register u_int length)
+default_print(struct netdissect_options *ndo,
+	      register const u_char *bp, register u_int length)
 {
-	default_print_unaligned(bp, length);
+	default_print_unaligned(ndo, bp, length);
 }
+
 
 #ifdef SIGINFO
 RETSIGTYPE requestinfo(int signo)
 {
-	if (infodelay)
+	if (gipdo.ndo_infodelay)
 		++infoprint;
 	else
-		info(0);
+		tcpdump_info(&gipdo,0);
 }
 #endif
 
 static void
-usage(void)
+usage(struct netdissect_options *ipdo)
 {
 	extern char version[];
 	extern char pcap_version[];
 
-	(void)fprintf(stderr, "%s version %s\n", program_name, version);
+	(void)fprintf(stderr, "%s version %s\n",
+		      ipdo->ndo_program_name, version);
 	(void)fprintf(stderr, "libpcap version %s\n", pcap_version);
 	(void)fprintf(stderr,
-"Usage: %s [-adeflnNOpqStuvxX] [-c count] [ -F file ]\n", program_name);
+"Usage: %s [-adeflnNOpqStuvxX] [-c count] [ -F file ]\n",
+		      ipdo->ndo_program_name);
 	(void)fprintf(stderr,
 "\t\t[ -i interface ] [ -r file ] [ -s snaplen ]\n");
 	(void)fprintf(stderr,

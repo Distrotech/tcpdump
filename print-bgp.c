@@ -33,7 +33,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/print-bgp.c,v 1.23 2001-09-17 21:57:55 fenner Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-bgp.c,v 1.23.2.1 2001-10-01 04:02:22 mcr Exp $";
 #endif
 
 #include <sys/param.h>
@@ -48,6 +48,7 @@ static const char rcsid[] =
 #include <string.h>
 #include <netdb.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
@@ -270,7 +271,8 @@ bgp_notify_minor(int major, int minor)
 }
 
 static int
-decode_prefix4(const u_char *pd, char *buf, u_int buflen)
+decode_prefix4(struct netdissect_options *ipdo,
+	       const u_char *pd, char *buf, u_int buflen)
 {
 	struct in_addr addr;
 	u_int plen;
@@ -285,13 +287,14 @@ decode_prefix4(const u_char *pd, char *buf, u_int buflen)
 		((u_char *)&addr)[(plen + 7) / 8 - 1] &=
 			((0xff00 >> (plen % 8)) & 0xff);
 	}
-	snprintf(buf, buflen, "%s/%d", getname((u_char *)&addr), plen);
+	snprintf(buf, buflen, "%s/%d", getname(ipdo, (u_char *)&addr), plen);
 	return 1 + (plen + 7) / 8;
 }
 
 #ifdef INET6
 static int
-decode_prefix6(const u_char *pd, char *buf, u_int buflen)
+decode_prefix6(struct netdissect_options *ndo,
+	       const u_char *pd, char *buf, u_int buflen)
 {
 	struct in6_addr addr;
 	u_int plen;
@@ -306,13 +309,14 @@ decode_prefix6(const u_char *pd, char *buf, u_int buflen)
 		addr.s6_addr[(plen + 7) / 8 - 1] &=
 			((0xff00 >> (plen % 8)) & 0xff);
 	}
-	snprintf(buf, buflen, "%s/%d", getname6((u_char *)&addr), plen);
+	snprintf(buf, buflen, "%s/%d", getname6(ndo, (u_char *)&addr), plen);
 	return 1 + (plen + 7) / 8;
 }
 #endif
 
 static void
-bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
+bgp_attr_print(struct netdissect_options *ipdo,
+	       const struct bgp_attr *attr, const u_char *dat, int len)
 {
 	int i;
 	u_int16_t af;
@@ -358,7 +362,7 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 		if (len != 4)
 			printf(" invalid len");
 		else
-			printf(" %s", getname(p));
+			printf(" %s", getname(ipdo, p));
 		break;
 	case BGPTYPE_MULTI_EXIT_DISC:
 	case BGPTYPE_LOCAL_PREF:
@@ -377,7 +381,7 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 			break;
 		}
 		printf(" AS #%u, origin %s", EXTRACT_16BITS(p),
-			getname(p + 2));
+			getname(ipdo, p + 2));
 		break;
 	case BGPTYPE_COMMUNITIES:
 		if (len % 4) {
@@ -431,12 +435,12 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 			while (i < tlen) {
 				switch (af) {
 				case AFNUM_INET:
-					printf(" %s", getname(p + 1 + i));
+					printf(" %s", getname(ipdo, p+ 1 + i));
 					i += sizeof(struct in_addr);
 					break;
 #ifdef INET6
 				case AFNUM_INET6:
-					printf(" %s", getname6(p + 1 + i));
+					printf(" %s", getname6(ndo, p + 1 + i));
 					i += sizeof(struct in6_addr);
 					break;
 #endif
@@ -465,12 +469,14 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 		while (len - (p - dat) > 0) {
 			switch (af) {
 			case AFNUM_INET:
-				advance = decode_prefix4(p, buf, sizeof(buf));
+				advance = decode_prefix4(ipdo, p,
+							 buf, sizeof(buf));
 				printf(" %s", buf);
 				break;
 #ifdef INET6
 			case AFNUM_INET6:
-				advance = decode_prefix6(p, buf, sizeof(buf));
+				advance = decode_prefix6(ndo, p,
+							 buf, sizeof(buf));
 				printf(" %s", buf);
 				break;
 #endif
@@ -501,12 +507,14 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 		while (len - (p - dat) > 0) {
 			switch (af) {
 			case AFNUM_INET:
-				advance = decode_prefix4(p, buf, sizeof(buf));
+				advance = decode_prefix4(ipdo, p,
+							 buf, sizeof(buf));
 				printf(" %s", buf);
 				break;
 #ifdef INET6
 			case AFNUM_INET6:
-				advance = decode_prefix6(p, buf, sizeof(buf));
+				advance = decode_prefix6(ipdo, p,
+							 buf, sizeof(buf));
 				printf(" %s", buf);
 				break;
 #endif
@@ -526,7 +534,8 @@ bgp_attr_print(const struct bgp_attr *attr, const u_char *dat, int len)
 }
 
 static void
-bgp_open_print(const u_char *dat, int length)
+bgp_open_print(struct netdissect_options *ipdo,
+	       const u_char *dat, int length)
 {
 	struct bgp_open bgpo;
 	struct bgp_opt bgpopt;
@@ -541,7 +550,7 @@ bgp_open_print(const u_char *dat, int length)
 	printf(": Version %d,", bgpo.bgpo_version);
 	printf(" AS #%u,", ntohs(bgpo.bgpo_myas));
 	printf(" Holdtime %u,", ntohs(bgpo.bgpo_holdtime));
-	printf(" ID %s,", getname((u_char *)&bgpo.bgpo_id));
+	printf(" ID %s,", getname(ipdo, (u_char *)&bgpo.bgpo_id));
 	printf(" Option length %u", bgpo.bgpo_optlen);
 
 	/* ugly! */
@@ -565,7 +574,8 @@ trunc:
 }
 
 static void
-bgp_update_print(const u_char *dat, int length)
+bgp_update_print(struct netdissect_options *ipdo,
+		 const u_char *dat, int length)
 {
 	struct bgp bgp;
 	struct bgp_attr bgpa;
@@ -600,7 +610,7 @@ bgp_update_print(const u_char *dat, int length)
 		printf(" (Withdrawn routes:");
 			
 		while(i < 2 + len) {
-			i += decode_prefix4(&p[i], buf, sizeof(buf));
+			i += decode_prefix4(ipdo, &p[i], buf, sizeof(buf));
 			printf(" %s", buf);
 		}
 		printf(")\n");
@@ -640,7 +650,7 @@ bgp_update_print(const u_char *dat, int length)
 				printf("]");
 			}
 
-			bgp_attr_print(&bgpa, &p[i + aoff], alen);
+			bgp_attr_print(ipdo, &bgpa, &p[i + aoff], alen);
 			newline = 1;
 
 			/* ( */
@@ -660,7 +670,7 @@ bgp_update_print(const u_char *dat, int length)
 		printf("(NLRI:");	/* ) */
 		while (dat + length > p) {
 			char buf[MAXHOSTNAMELEN + 100];
-			i = decode_prefix4(p, buf, sizeof(buf));
+			i = decode_prefix4(ipdo, p, buf, sizeof(buf));
 			printf(" %s", buf);
 			if (i < 0)
 				break;
@@ -676,7 +686,8 @@ trunc:
 }
 
 static void
-bgp_notification_print(const u_char *dat, int length)
+bgp_notification_print(struct netdissect_options *ipdo,
+		       const u_char *dat, int length)
 {
 	struct bgp_notification bgpn;
 	int hlen;
@@ -694,7 +705,8 @@ trunc:
 }
 
 static void
-bgp_header_print(const u_char *dat, int length)
+bgp_header_print(struct netdissect_options *ipdo,
+		 const u_char *dat, int length)
 {
 	struct bgp bgp;
 
@@ -704,13 +716,13 @@ bgp_header_print(const u_char *dat, int length)
 
 	switch (bgp.bgp_type) {
 	case BGP_OPEN:
-		bgp_open_print(dat, length);
+		bgp_open_print(ipdo, dat, length);
 		break;
 	case BGP_UPDATE:
-		bgp_update_print(dat, length);
+		bgp_update_print(ipdo, dat, length);
 		break;
 	case BGP_NOTIFICATION:
-		bgp_notification_print(dat, length);
+		bgp_notification_print(ipdo, dat, length);
 		break;
 	}
 
@@ -722,7 +734,8 @@ trunc:
 }
 
 void
-bgp_print(const u_char *dat, int length)
+bgp_print(struct netdissect_options *ipdo,
+	  const u_char *dat, int length)
 {
 	const u_char *p;
 	const u_char *ep;
@@ -772,7 +785,7 @@ bgp_print(const u_char *dat, int length)
 		else
 			printf(" ");
 		if (TTEST2(p[0], hlen)) {
-			bgp_header_print(p, hlen);
+			bgp_header_print(ipdo, p, hlen);
 			newline = 1;
 			p += hlen;
 			start = p;

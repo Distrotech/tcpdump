@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-sl.c,v 1.57 2001-07-05 18:54:17 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-sl.c,v 1.57.2.1 2001-10-01 04:02:51 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 #include <pcap.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -50,8 +51,10 @@ static const char rcsid[] =
 static u_int lastlen[2][256];
 static u_int lastconn = 255;
 
-static void sliplink_print(const u_char *, const struct ip *, u_int);
-static void compressed_sl_print(const u_char *, const struct ip *, u_int, int);
+static void sliplink_print(struct netdissect_options *ipdo,
+			   const u_char *, const struct ip *, u_int);
+static void compressed_sl_print(struct netdissect_options *,
+				const u_char *, const struct ip *, u_int, int);
 
 void
 sl_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
@@ -59,9 +62,10 @@ sl_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	register u_int caplen = h->caplen;
 	register u_int length = h->len;
 	register const struct ip *ip;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo,&h->ts);
 
 	if (caplen < SLIP_HDRLEN) {
 		printf("[|slip]");
@@ -80,15 +84,15 @@ sl_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	ip = (struct ip *)(p + SLIP_HDRLEN);
 
 	if (eflag)
-		sliplink_print(p, ip, length);
+		sliplink_print(ipdo,p, ip, length);
 
 	switch (IP_V(ip)) {
 	case 4:
-		ip_print((u_char *)ip, length);
+		ip_print(ipdo, (u_char *)ip, length);
 		break;
 #ifdef INET6
 	case 6:
-		ip6_print((u_char *)ip, length);
+		ip6_print(ipdo, (u_char *)ip, length);
 		break;
 #endif
 	default:
@@ -111,9 +115,10 @@ sl_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	register u_int caplen = h->caplen;
 	register u_int length = h->len;
 	register const struct ip *ip;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo,&h->ts);
 
 	if (caplen < SLIP_HDRLEN) {
 		printf("[|slip]");
@@ -133,10 +138,10 @@ sl_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 
 #ifdef notdef
 	if (eflag)
-		sliplink_print(p, ip, length);
+		sliplink_print(ipdo,p, ip, length);
 #endif
 
-	ip_print((u_char *)ip, length);
+	ip_print(ipdo, (u_char *)ip, length);
 
 	if (xflag)
 		default_print((u_char *)ip, caplen - SLIP_HDRLEN);
@@ -148,7 +153,8 @@ sl_bsdos_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 }
 
 static void
-sliplink_print(register const u_char *p, register const struct ip *ip,
+sliplink_print(struct netdissect_options *ipdo,
+	       register const u_char *p, register const struct ip *ip,
 	       register u_int length)
 {
 	int dir;
@@ -188,8 +194,8 @@ sliplink_print(register const u_char *p, register const struct ip *ip,
 
 	default:
 		if (p[SLX_CHDR] & TYPE_COMPRESSED_TCP) {
-			compressed_sl_print(&p[SLX_CHDR], ip,
-			    length, dir);
+			compressed_sl_print(ipdo, &p[SLX_CHDR], ip,
+					    length, dir);
 			printf(": ");
 		} else
 			printf("slip-%d!: ", p[SLX_CHDR]);
@@ -226,7 +232,8 @@ print_sl_winchange(register const u_char *cp)
 }
 
 static void
-compressed_sl_print(const u_char *chdr, const struct ip *ip,
+compressed_sl_print(struct netdissect_options *ipdo,
+		    const u_char *chdr, const struct ip *ip,
 		    u_int length, int dir)
 {
 	register const u_char *cp = chdr;

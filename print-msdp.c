@@ -17,7 +17,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-msdp.c,v 1.1 2001-09-17 20:06:18 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-msdp.c,v 1.1.2.1 2001-10-01 04:02:41 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -25,7 +25,9 @@ static const char rcsid[] =
 #endif
 
 #include <stdio.h>
+#include <netinet/in.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
@@ -33,7 +35,8 @@ static const char rcsid[] =
 #define MSDP_TYPE_MAX	7
 
 void
-msdp_print(const unsigned char *sp, u_int length)
+msdp_print(struct netdissect_options *ndo,
+	   const unsigned char *sp, u_int length)
 {
 	unsigned int type, len;
 
@@ -67,7 +70,8 @@ msdp_print(const unsigned char *sp, u_int length)
 				(void)printf(" [w/data]");
 				if (vflag > 1) {
 					(void)printf(" ");
-					ip_print(sp + *sp * 12 + 8 - 3,
+					ip_print(ndo,
+						 sp + *sp * 12 + 8 - 3,
 					         len - (*sp * 12 + 8));
 				}
 			}

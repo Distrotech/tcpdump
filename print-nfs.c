@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-nfs.c,v 1.89 2001-07-08 08:01:43 itojun Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-nfs.c,v 1.89.2.1 2001-10-01 04:02:41 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -44,6 +44,7 @@ struct rtentry;
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -55,15 +56,20 @@ struct rtentry;
 #include "ip6.h"
 #endif
 
-static void nfs_printfh(const u_int32_t *, const u_int);
+static void nfs_printfh(struct netdissect_options *,
+			const u_int32_t *, const u_int);
 static void xid_map_enter(const struct rpc_msg *, const u_char *);
 static int32_t xid_map_find(const struct rpc_msg *, const u_char *,
 			    u_int32_t *, u_int32_t *);
-static void interp_reply(const struct rpc_msg *, u_int32_t, u_int32_t, int);
-static const u_int32_t *parse_post_op_attr(const u_int32_t *, int);
-static void print_sattr3(const struct nfsv3_sattr *sa3, int verbose);
+static void interp_reply(struct netdissect_options *,
+			 const struct rpc_msg *, u_int32_t, u_int32_t, int);
+static const u_int32_t *parse_post_op_attr(struct netdissect_options *,
+					   const u_int32_t *, int);
+static void print_sattr3(struct netdissect_options *,
+			 const struct nfsv3_sattr *sa3, int verbose);
 static int print_int64(const u_int32_t *dp, int how);
-static void print_nfsaddr(const u_char *, const char *, const char *);
+static void print_nfsaddr(struct netdissect_options *,
+			  const u_char *, const char *, const char *);
 
 /*
  * Mapping of old NFS Version 2 RPC numbers to generic numbers.
@@ -212,7 +218,8 @@ static int print_int64(const u_int32_t *dp, int how)
 }
 
 static void
-print_nfsaddr(const u_char *bp, const char *s, const char *d)
+print_nfsaddr(struct netdissect_options *ipdo,
+	      const u_char *bp, const char *s, const char *d)
 {
 	struct ip *ip;
 #ifdef INET6
@@ -251,7 +258,8 @@ print_nfsaddr(const u_char *bp, const char *s, const char *d)
 }
 
 static const u_int32_t *
-parse_sattr3(const u_int32_t *dp, struct nfsv3_sattr *sa3)
+parse_sattr3(struct netdissect_options *ipdo,
+	     const u_int32_t *dp, struct nfsv3_sattr *sa3)
 {
 	TCHECK(dp[0]);
 	if ((sa3->sa_modeset = ntohl(*dp++))) {
@@ -299,7 +307,8 @@ trunc:
 static int nfserr;		/* true if we error rather than trunc */
 
 static void
-print_sattr3(const struct nfsv3_sattr *sa3, int verbose)
+print_sattr3(struct netdissect_options *ipdo,
+	     const struct nfsv3_sattr *sa3, int verbose)
 {
 	if (sa3->sa_modeset)
 		printf(" mode %o", sa3->sa_mode);
@@ -318,7 +327,8 @@ print_sattr3(const struct nfsv3_sattr *sa3, int verbose)
 }
 
 void
-nfsreply_print(register const u_char *bp, u_int length,
+nfsreply_print(struct netdissect_options *ipdo,
+	       register const u_char *bp, u_int length,
 	       register const u_char *bp2)
 {
 	register const struct rpc_msg *rp;
@@ -337,14 +347,14 @@ nfsreply_print(register const u_char *bp, u_int length,
 		snprintf(dstid, sizeof(dstid), "%u",
 		    (u_int32_t)ntohl(rp->rm_xid));
 	}
-	print_nfsaddr(bp2, srcid, dstid);
+	print_nfsaddr(ipdo, bp2, srcid, dstid);
 	(void)printf("reply %s %d",
 		     ntohl(rp->rm_reply.rp_stat) == MSG_ACCEPTED?
 			     "ok":"ERR",
 			     length);
 
 	if (xid_map_find(rp, bp2, &proc, &vers) >= 0)
-		interp_reply(rp, proc, vers, length);
+		interp_reply(ipdo, rp, proc, vers, length);
 }
 
 /*
@@ -352,7 +362,8 @@ nfsreply_print(register const u_char *bp, u_int length,
  * If the packet was truncated, return 0.
  */
 static const u_int32_t *
-parsereq(register const struct rpc_msg *rp, register u_int length)
+parsereq(struct netdissect_options *ipdo,
+	 register const struct rpc_msg *rp, register u_int length)
 {
 	register const u_int32_t *dp;
 	register u_int len;
@@ -382,7 +393,8 @@ trunc:
  * If packet was truncated, return 0.
  */
 static const u_int32_t *
-parsefh(register const u_int32_t *dp, int v3)
+parsefh(struct netdissect_options *ipdo,
+	register const u_int32_t *dp, int v3)
 {
 	int len;
 
@@ -394,7 +406,7 @@ parsefh(register const u_int32_t *dp, int v3)
 		len = NFSX_V2FH / 4;
 
 	if (TTEST2(*dp, len * sizeof(*dp))) {
-		nfs_printfh(dp, len);
+		nfs_printfh(ipdo, dp, len);
 		return (dp + len);
 	}
 trunc:
@@ -406,7 +418,8 @@ trunc:
  * If packet was truncated, return 0.
  */
 static const u_int32_t *
-parsefn(register const u_int32_t *dp)
+parsefn(struct netdissect_options *ipdo,
+	register const u_int32_t *dp)
 {
 	register u_int32_t len;
 	register const u_char *cp;
@@ -439,18 +452,20 @@ trunc:
  * If packet was truncated (or there was some other error), return 0.
  */
 static const u_int32_t *
-parsefhn(register const u_int32_t *dp, int v3)
+parsefhn(struct netdissect_options *ipdo,
+	 register const u_int32_t *dp, int v3)
 {
-	dp = parsefh(dp, v3);
+	dp = parsefh(ipdo, dp, v3);
 	if (dp == NULL)
 		return (NULL);
 	putchar(' ');
-	return (parsefn(dp));
+	return (parsefn(ipdo, dp));
 }
 
 void
-nfsreq_print(register const u_char *bp, u_int length,
-    register const u_char *bp2)
+nfsreq_print(struct netdissect_options *ipdo,
+	     register const u_char *bp, u_int length,
+	     register const u_char *bp2)
 {
 	register const struct rpc_msg *rp;
 	register const u_int32_t *dp;
@@ -471,7 +486,7 @@ nfsreq_print(register const u_char *bp, u_int length,
 		    (u_int32_t)ntohl(rp->rm_xid));
 		snprintf(dstid, sizeof(dstid), "%u", NFS_PORT);
 	}
-	print_nfsaddr(bp2, srcid, dstid);
+	print_nfsaddr(ipdo, bp2, srcid, dstid);
 	(void)printf("%d", length);
 
 	xid_map_enter(rp, bp2);	/* record proc number for later on */
@@ -492,29 +507,29 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_GETATTR:
 		printf(" getattr");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefh(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefh(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_SETATTR:
 		printf(" setattr");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefh(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefh(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_LOOKUP:
 		printf(" lookup");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefhn(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefhn(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_ACCESS:
 		printf(" access");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			TCHECK(dp[0]);
 			printf(" %04x", (u_int32_t)ntohl(dp[0]));
 			return;
@@ -523,15 +538,15 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_READLINK:
 		printf(" readlink");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefh(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefh(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_READ:
 		printf(" read");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			if (v3) {
 				TCHECK(dp[2]);
 				printf(" %u bytes @ ",
@@ -549,8 +564,8 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_WRITE:
 		printf(" write");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			if (v3) {
 				TCHECK(dp[4]);
 				printf(" %u bytes @ ",
@@ -577,39 +592,40 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_CREATE:
 		printf(" create");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefhn(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefhn(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_MKDIR:
 		printf(" mkdir");
-		if ((dp = parsereq(rp, length)) != 0 && parsefhn(dp, v3) != 0)
+		if ((dp = parsereq(ipdo, rp, length)) != 0 &&
+		    parsefhn(ipdo, dp, v3) != 0)
 			return;
 		break;
 
 	case NFSPROC_SYMLINK:
 		printf(" symlink");
-		if ((dp = parsereq(rp, length)) != 0 &&
-		    (dp = parsefhn(dp, v3)) != 0) {
+		if ((dp = parsereq(ipdo, rp, length)) != 0 &&
+		    (dp = parsefhn(ipdo, dp, v3)) != 0) {
 			fputs(" ->", stdout);
-			if (v3 && (dp = parse_sattr3(dp, &sa3)) == 0)
+			if (v3 && (dp = parse_sattr3(ipdo, dp, &sa3)) == 0)
 				break;
-			if (parsefn(dp) == 0)
+			if (parsefn(ipdo, dp) == 0)
 				break;
 			if (v3 && vflag)
-				print_sattr3(&sa3, vflag);
+				print_sattr3(ipdo, &sa3, vflag);
 			return;
 		}
 		break;
 
 	case NFSPROC_MKNOD:
 		printf(" mknod");
-		if ((dp = parsereq(rp, length)) != 0 &&
-		    (dp = parsefhn(dp, v3)) != 0) {
+		if ((dp = parsereq(ipdo, rp, length)) != 0 &&
+		    (dp = parsefhn(ipdo, dp, v3)) != 0) {
 			TCHECK(*dp);
 			type = (nfs_type)ntohl(*dp++);
-			if ((dp = parse_sattr3(dp, &sa3)) == 0)
+			if ((dp = parse_sattr3(ipdo, dp, &sa3)) == 0)
 				break;
 			printf(" %s", tok2str(type2str, "unk-ft %d", type));
 			if (vflag && (type == NFCHR || type == NFBLK)) {
@@ -620,49 +636,49 @@ nfsreq_print(register const u_char *bp, u_int length,
 				dp += 2;
 			}
 			if (vflag)
-				print_sattr3(&sa3, vflag);
+				print_sattr3(ipdo, &sa3, vflag);
 			return;
 		}
 		break;
 
 	case NFSPROC_REMOVE:
 		printf(" remove");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefhn(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefhn(ipdo,dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_RMDIR:
 		printf(" rmdir");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefhn(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefhn(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
 	case NFSPROC_RENAME:
 		printf(" rename");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefhn(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefhn(ipdo, dp, v3)) != NULL) {
 			fputs(" ->", stdout);
-			if (parsefhn(dp, v3) != NULL)
+			if (parsefhn(ipdo, dp, v3) != NULL)
 				return;
 		}
 		break;
 
 	case NFSPROC_LINK:
 		printf(" link");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			fputs(" ->", stdout);
-			if (parsefhn(dp, v3) != NULL)
+			if (parsefhn(ipdo, dp, v3) != NULL)
 				return;
 		}
 		break;
 
 	case NFSPROC_READDIR:
 		printf(" readdir");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			if (v3) {
 				TCHECK(dp[4]);
 				/*
@@ -691,8 +707,8 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_READDIRPLUS:
 		printf(" readdirplus");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			TCHECK(dp[4]);
 			/*
 			 * We don't try to interpret the offset
@@ -709,8 +725,8 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_FSSTAT:
 		printf(" fsstat");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    parsefh(dp, v3) != NULL)
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    parsefh(ipdo, dp, v3) != NULL)
 			return;
 		break;
 
@@ -724,8 +740,8 @@ nfsreq_print(register const u_char *bp, u_int length,
 
 	case NFSPROC_COMMIT:
 		printf(" commit");
-		if ((dp = parsereq(rp, length)) != NULL &&
-		    (dp = parsefh(dp, v3)) != NULL) {
+		if ((dp = parsereq(ipdo, rp, length)) != NULL &&
+		    (dp = parsefh(ipdo, dp, v3)) != NULL) {
 			printf(" %u bytes @ ", (u_int32_t) ntohl(dp[2]));
 			print_int64(dp, UNSIGNED);
 			return;
@@ -752,13 +768,14 @@ trunc:
  * additional hacking on the parser code.
  */
 static void
-nfs_printfh(register const u_int32_t *dp, const u_int len)
+nfs_printfh(struct netdissect_options *ipdo,
+	    register const u_int32_t *dp, const u_int len)
 {
 	my_fsid fsid;
 	ino_t ino;
 	char *sfsname = NULL;
 
-	Parse_fh((caddr_t*)dp, len, &fsid, &ino, NULL, &sfsname, 0);
+	Parse_fh((caddr_t*)dp, len, &fsid, &ino, NULL, (const char **)&sfsname, 0);
 
 	if (sfsname) {
 		/* file system ID is ASCII, not numeric, for this server OS */
@@ -934,7 +951,8 @@ xid_map_find(const struct rpc_msg *rp, const u_char *bp, u_int32_t *proc,
  * If the packet was truncated, return 0.
  */
 static const u_int32_t *
-parserep(register const struct rpc_msg *rp, register u_int length)
+parserep(struct netdissect_options *ipdo,
+	 register const struct rpc_msg *rp, register u_int length)
 {
 	register const u_int32_t *dp;
 	u_int len;
@@ -1013,7 +1031,8 @@ trunc:
 }
 
 static const u_int32_t *
-parsestatus(const u_int32_t *dp, int *er)
+parsestatus(struct netdissect_options *ipdo,
+	    const u_int32_t *dp, int *er)
 {
 	int errnum;
 
@@ -1035,7 +1054,8 @@ trunc:
 }
 
 static const u_int32_t *
-parsefattr(const u_int32_t *dp, int verbose, int v3)
+parsefattr(struct netdissect_options *ipdo,
+	   const u_int32_t *dp, int verbose, int v3)
 {
 	const struct nfs_fattr *fap;
 
@@ -1104,53 +1124,57 @@ trunc:
 }
 
 static int
-parseattrstat(const u_int32_t *dp, int verbose, int v3)
+parseattrstat(struct netdissect_options *ipdo,
+	      const u_int32_t *dp, int verbose, int v3)
 {
 	int er;
 
-	dp = parsestatus(dp, &er);
+	dp = parsestatus(ipdo,dp, &er);
 	if (dp == NULL || er)
 		return (0);
 
-	return (parsefattr(dp, verbose, v3) != NULL);
+	return (parsefattr(ipdo,dp, verbose, v3) != NULL);
 }
 
 static int
-parsediropres(const u_int32_t *dp)
+parsediropres(struct netdissect_options *ipdo,
+	      const u_int32_t *dp)
 {
 	int er;
 
-	if (!(dp = parsestatus(dp, &er)) || er)
+	if (!(dp = parsestatus(ipdo, dp, &er)) || er)
 		return (0);
 
-	dp = parsefh(dp, 0);
+	dp = parsefh(ipdo, dp, 0);
 	if (dp == NULL)
 		return (0);
 
-	return (parsefattr(dp, vflag, 0) != NULL);
+	return (parsefattr(ipdo, dp, vflag, 0) != NULL);
 }
 
 static int
-parselinkres(const u_int32_t *dp, int v3)
+parselinkres(struct netdissect_options *ipdo,
+	     const u_int32_t *dp, int v3)
 {
 	int er;
 
-	dp = parsestatus(dp, &er);
+	dp = parsestatus(ipdo, dp, &er);
 	if (dp == NULL || er)
 		return(0);
-	if (v3 && !(dp = parse_post_op_attr(dp, vflag)))
+	if (v3 && !(dp = parse_post_op_attr(ipdo, dp, vflag)))
 		return (0);
 	putchar(' ');
-	return (parsefn(dp) != NULL);
+	return (parsefn(ipdo, dp) != NULL);
 }
 
 static int
-parsestatfs(const u_int32_t *dp, int v3)
+parsestatfs(struct netdissect_options *ipdo,
+	    const u_int32_t *dp, int v3)
 {
 	const struct nfs_statfs *sfsp;
 	int er;
 
-	dp = parsestatus(dp, &er);
+	dp = parsestatus(ipdo, dp, &er);
 	if (dp == NULL || (!v3 && er))
 		return (0);
 
@@ -1160,7 +1184,7 @@ parsestatfs(const u_int32_t *dp, int v3)
 	if (v3) {
 		if (vflag)
 			printf(" POST:");
-		if (!(dp = parse_post_op_attr(dp, vflag)))
+		if (!(dp = parse_post_op_attr(ipdo, dp, vflag)))
 			return (0);
 	}
 
@@ -1200,11 +1224,12 @@ trunc:
 }
 
 static int
-parserddires(const u_int32_t *dp)
+parserddires(struct netdissect_options *ipdo,
+	     const u_int32_t *dp)
 {
 	int er;
 
-	dp = parsestatus(dp, &er);
+	dp = parsestatus(ipdo, dp, &er);
 	if (dp == NULL || er)
 		return (0);
 	if (qflag)
@@ -1222,7 +1247,8 @@ trunc:
 }
 
 static const u_int32_t *
-parse_wcc_attr(const u_int32_t *dp)
+parse_wcc_attr(struct netdissect_options *ipdo,
+	       const u_int32_t *dp)
 {
 	printf(" sz ");
 	print_int64(dp, UNSIGNED);
@@ -1236,7 +1262,8 @@ parse_wcc_attr(const u_int32_t *dp)
  * Pre operation attributes. Print only if vflag > 1.
  */
 static const u_int32_t *
-parse_pre_op_attr(const u_int32_t *dp, int verbose)
+parse_pre_op_attr(struct netdissect_options *ipdo,
+		  const u_int32_t *dp, int verbose)
 {
 	TCHECK(dp[0]);
 	if (!ntohl(dp[0]))
@@ -1244,7 +1271,7 @@ parse_pre_op_attr(const u_int32_t *dp, int verbose)
 	dp++;
 	TCHECK2(dp, 24);
 	if (verbose > 1) {
-		return parse_wcc_attr(dp);
+		return parse_wcc_attr(ipdo, dp);
 	} else {
 		/* If not verbose enough, just skip over wcc_attr */
 		return (dp + 6);
@@ -1257,14 +1284,15 @@ trunc:
  * Post operation attributes are printed if vflag >= 1
  */
 static const u_int32_t *
-parse_post_op_attr(const u_int32_t *dp, int verbose)
+parse_post_op_attr(struct netdissect_options *ipdo,
+		   const u_int32_t *dp, int verbose)
 {
 	TCHECK(dp[0]);
 	if (!ntohl(dp[0]))
 		return (dp + 1);
 	dp++;
 	if (verbose) {
-		return parsefattr(dp, verbose, 1);
+		return parsefattr(ipdo, dp, verbose, 1);
 	} else
 		return (dp + (NFSX_V3FATTR / sizeof (u_int32_t)));
 trunc:
@@ -1272,40 +1300,42 @@ trunc:
 }
 
 static const u_int32_t *
-parse_wcc_data(const u_int32_t *dp, int verbose)
+parse_wcc_data(struct netdissect_options *ipdo,
+	       const u_int32_t *dp, int verbose)
 {
 	if (verbose > 1)
 		printf(" PRE:");
-	if (!(dp = parse_pre_op_attr(dp, verbose)))
+	if (!(dp = parse_pre_op_attr(ipdo, dp, verbose)))
 		return (0);
 
 	if (verbose)
 		printf(" POST:");
-	return parse_post_op_attr(dp, verbose);
+	return parse_post_op_attr(ipdo, dp, verbose);
 }
 
 static const u_int32_t *
-parsecreateopres(const u_int32_t *dp, int verbose)
+parsecreateopres(struct netdissect_options *ipdo,
+		 const u_int32_t *dp, int verbose)
 {
 	int er;
 
-	if (!(dp = parsestatus(dp, &er)))
+	if (!(dp = parsestatus(ipdo, dp, &er)))
 		return (0);
 	if (er)
-		dp = parse_wcc_data(dp, verbose);
+		dp = parse_wcc_data(ipdo, dp, verbose);
 	else {
 		TCHECK(dp[0]);
 		if (!ntohl(dp[0]))
 			return (dp + 1);
 		dp++;
-		if (!(dp = parsefh(dp, 1)))
+		if (!(dp = parsefh(ipdo, dp, 1)))
 			return (0);
 		if (verbose) {
-			if (!(dp = parse_post_op_attr(dp, verbose)))
+			if (!(dp = parse_post_op_attr(ipdo, dp, verbose)))
 				return (0);
 			if (vflag > 1) {
 				printf("dir attr:");
-				dp = parse_wcc_data(dp, verbose);
+				dp = parse_wcc_data(ipdo, dp, verbose);
 			}
 		}
 	}
@@ -1315,25 +1345,27 @@ trunc:
 }
 
 static int
-parsewccres(const u_int32_t *dp, int verbose)
+parsewccres(struct netdissect_options *ipdo,
+	    const u_int32_t *dp, int verbose)
 {
 	int er;
 
-	if (!(dp = parsestatus(dp, &er)))
+	if (!(dp = parsestatus(ipdo, dp, &er)))
 		return (0);
-	return parse_wcc_data(dp, verbose) != 0;
+	return parse_wcc_data(ipdo, dp, verbose) != 0;
 }
 
 static const u_int32_t *
-parsev3rddirres(const u_int32_t *dp, int verbose)
+parsev3rddirres(struct netdissect_options *ipdo,
+		const u_int32_t *dp, int verbose)
 {
 	int er;
 
-	if (!(dp = parsestatus(dp, &er)))
+	if (!(dp = parsestatus(ipdo, dp, &er)))
 		return (0);
 	if (vflag)
 		printf(" POST:");
-	if (!(dp = parse_post_op_attr(dp, verbose)))
+	if (!(dp = parse_post_op_attr(ipdo, dp, verbose)))
 		return (0);
 	if (er)
 		return dp;
@@ -1348,16 +1380,17 @@ trunc:
 }
 
 static int
-parsefsinfo(const u_int32_t *dp)
+parsefsinfo(struct netdissect_options *ipdo,
+	    const u_int32_t *dp)
 {
 	struct nfsv3_fsinfo *sfp;
 	int er;
 
-	if (!(dp = parsestatus(dp, &er)))
+	if (!(dp = parsestatus(ipdo, dp, &er)))
 		return (0);
 	if (vflag)
 		printf(" POST:");
-	if (!(dp = parse_post_op_attr(dp, vflag)))
+	if (!(dp = parse_post_op_attr(ipdo, dp, vflag)))
 		return (0);
 	if (er)
 		return (1);
@@ -1385,16 +1418,17 @@ trunc:
 }
 
 static int
-parsepathconf(const u_int32_t *dp)
+parsepathconf(struct netdissect_options *ipdo,
+	      const u_int32_t *dp)
 {
 	int er;
 	struct nfsv3_pathconf *spp;
 
-	if (!(dp = parsestatus(dp, &er)))
+	if (!(dp = parsestatus(ipdo, dp, &er)))
 		return (0);
 	if (vflag)
 		printf(" POST:");
-	if (!(dp = parse_post_op_attr(dp, vflag)))
+	if (!(dp = parse_post_op_attr(ipdo, dp, vflag)))
 		return (0);
 	if (er)
 		return (1);
@@ -1415,7 +1449,8 @@ trunc:
 }
 
 static void
-interp_reply(const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int length)
+interp_reply(struct netdissect_options *ipdo,
+	     const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int length)
 {
 	register const u_int32_t *dp;
 	register int v3;
@@ -1438,62 +1473,63 @@ interp_reply(const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int lengt
 
 	case NFSPROC_GETATTR:
 		printf(" getattr");
-		dp = parserep(rp, length);
-		if (dp != NULL && parseattrstat(dp, !qflag, v3) != 0)
+		dp = parserep(ipdo, rp, length);
+		if (dp != NULL && parseattrstat(ipdo, dp, !qflag, v3) != 0)
 			return;
 		break;
 
 	case NFSPROC_SETATTR:
 		printf(" setattr");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo, rp, length)))
 			return;
 		if (v3) {
-			if (parsewccres(dp, vflag))
+			if (parsewccres(ipdo, dp, vflag))
 				return;
 		} else {
-			if (parseattrstat(dp, !qflag, 0) != 0)
+			if (parseattrstat(ipdo, dp, !qflag, 0) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_LOOKUP:
 		printf(" lookup");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo, rp, length)))
 			break;
 		if (v3) {
-			if (!(dp = parsestatus(dp, &er)))
+			if (!(dp = parsestatus(ipdo, dp, &er)))
 				break;
 			if (er) {
 				if (vflag > 1) {
 					printf(" post dattr:");
-					dp = parse_post_op_attr(dp, vflag);
+					dp = parse_post_op_attr(ipdo,
+								dp, vflag);
 				}
 			} else {
-				if (!(dp = parsefh(dp, v3)))
+				if (!(dp = parsefh(ipdo, dp, v3)))
 					break;
-				if ((dp = parse_post_op_attr(dp, vflag)) &&
+				if ((dp = parse_post_op_attr(ipdo,dp,vflag)) &&
 				    vflag > 1) {
 					printf(" post dattr:");
-					dp = parse_post_op_attr(dp, vflag);
+					dp = parse_post_op_attr(ipdo,dp,vflag);
 				}
 			}
 			if (dp)
 				return;
 		} else {
-			if (parsediropres(dp) != 0)
+			if (parsediropres(ipdo,dp) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_ACCESS:
 		printf(" access");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo, rp, length)))
 			break;
-		if (!(dp = parsestatus(dp, &er)))
+		if (!(dp = parsestatus(ipdo, dp, &er)))
 			break;
 		if (vflag)
 			printf(" attr:");
-		if (!(dp = parse_post_op_attr(dp, vflag)))
+		if (!(dp = parse_post_op_attr(ipdo,dp, vflag)))
 			break;
 		if (!er)
 			printf(" c %04x", (u_int32_t)ntohl(dp[0]));
@@ -1501,19 +1537,19 @@ interp_reply(const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int lengt
 
 	case NFSPROC_READLINK:
 		printf(" readlink");
-		dp = parserep(rp, length);
-		if (dp != NULL && parselinkres(dp, v3) != 0)
+		dp = parserep(ipdo,rp, length);
+		if (dp != NULL && parselinkres(ipdo,dp, v3) != 0)
 			return;
 		break;
 
 	case NFSPROC_READ:
 		printf(" read");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (!(dp = parsestatus(dp, &er)))
+			if (!(dp = parsestatus(ipdo,dp, &er)))
 				break;
-			if (!(dp = parse_post_op_attr(dp, vflag)))
+			if (!(dp = parse_post_op_attr(ipdo,dp, vflag)))
 				break;
 			if (er)
 				return;
@@ -1525,19 +1561,19 @@ interp_reply(const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int lengt
 			}
 			return;
 		} else {
-			if (parseattrstat(dp, vflag, 0) != 0)
+			if (parseattrstat(ipdo,dp, vflag, 0) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_WRITE:
 		printf(" write");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (!(dp = parsestatus(dp, &er)))
+			if (!(dp = parsestatus(ipdo,dp, &er)))
 				break;
-			if (!(dp = parse_wcc_data(dp, vflag)))
+			if (!(dp = parse_wcc_data(ipdo,dp, vflag)))
 				break;
 			if (er)
 				return;
@@ -1553,174 +1589,174 @@ interp_reply(const struct rpc_msg *rp, u_int32_t proc, u_int32_t vers, int lengt
 				return;
 			}
 		} else {
-			if (parseattrstat(dp, vflag, v3) != 0)
+			if (parseattrstat(ipdo,dp, vflag, v3) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_CREATE:
 		printf(" create");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsecreateopres(dp, vflag) != 0)
+			if (parsecreateopres(ipdo,dp, vflag) != 0)
 				return;
 		} else {
-			if (parsediropres(dp) != 0)
+			if (parsediropres(ipdo,dp) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_MKDIR:
 		printf(" mkdir");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsecreateopres(dp, vflag) != 0)
+			if (parsecreateopres(ipdo,dp, vflag) != 0)
 				return;
 		} else {
-			if (parsediropres(dp) != 0)
+			if (parsediropres(ipdo,dp) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_SYMLINK:
 		printf(" symlink");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsecreateopres(dp, vflag) != 0)
+		  if (parsecreateopres(ipdo,dp, vflag) != 0)
 				return;
 		} else {
-			if (parsestatus(dp, &er) != 0)
+		  if (parsestatus(ipdo,dp, &er) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_MKNOD:
 		printf(" mknod");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
-		if (parsecreateopres(dp, vflag) != 0)
+		if (parsecreateopres(ipdo,dp, vflag) != 0)
 			return;
 		break;
 
 	case NFSPROC_REMOVE:
 		printf(" remove");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsewccres(dp, vflag))
+			if (parsewccres(ipdo,dp, vflag))
 				return;
 		} else {
-			if (parsestatus(dp, &er) != 0)
+			if (parsestatus(ipdo,dp, &er) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_RMDIR:
 		printf(" rmdir");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsewccres(dp, vflag))
+			if (parsewccres(ipdo,dp, vflag))
 				return;
 		} else {
-			if (parsestatus(dp, &er) != 0)
+			if (parsestatus(ipdo,dp, &er) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_RENAME:
 		printf(" rename");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (!(dp = parsestatus(dp, &er)))
+			if (!(dp = parsestatus(ipdo,dp, &er)))
 				break;
 			if (vflag) {
 				printf(" from:");
-				if (!(dp = parse_wcc_data(dp, vflag)))
+				if (!(dp = parse_wcc_data(ipdo,dp, vflag)))
 					break;
 				printf(" to:");
-				if (!(dp = parse_wcc_data(dp, vflag)))
+				if (!(dp = parse_wcc_data(ipdo,dp, vflag)))
 					break;
 			}
 			return;
 		} else {
-			if (parsestatus(dp, &er) != 0)
+			if (parsestatus(ipdo,dp, &er) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_LINK:
 		printf(" link");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (!(dp = parsestatus(dp, &er)))
+			if (!(dp = parsestatus(ipdo,dp, &er)))
 				break;
 			if (vflag) {
 				printf(" file POST:");
-				if (!(dp = parse_post_op_attr(dp, vflag)))
+				if (!(dp = parse_post_op_attr(ipdo,dp, vflag)))
 					break;
 				printf(" dir:");
-				if (!(dp = parse_wcc_data(dp, vflag)))
+				if (!(dp = parse_wcc_data(ipdo,dp, vflag)))
 					break;
 				return;
 			}
 		} else {
-			if (parsestatus(dp, &er) != 0)
+			if (parsestatus(ipdo,dp, &er) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_READDIR:
 		printf(" readdir");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
 		if (v3) {
-			if (parsev3rddirres(dp, vflag))
+			if (parsev3rddirres(ipdo,dp, vflag))
 				return;
 		} else {
-			if (parserddires(dp) != 0)
+			if (parserddires(ipdo,dp) != 0)
 				return;
 		}
 		break;
 
 	case NFSPROC_READDIRPLUS:
 		printf(" readdirplus");
-		if (!(dp = parserep(rp, length)))
+		if (!(dp = parserep(ipdo,rp, length)))
 			break;
-		if (parsev3rddirres(dp, vflag))
+		if (parsev3rddirres(ipdo,dp, vflag))
 			return;
 		break;
 
 	case NFSPROC_FSSTAT:
 		printf(" fsstat");
-		dp = parserep(rp, length);
-		if (dp != NULL && parsestatfs(dp, v3) != 0)
+		dp = parserep(ipdo,rp, length);
+		if (dp != NULL && parsestatfs(ipdo,dp, v3) != 0)
 			return;
 		break;
 
 	case NFSPROC_FSINFO:
 		printf(" fsinfo");
-		dp = parserep(rp, length);
-		if (dp != NULL && parsefsinfo(dp) != 0)
+		dp = parserep(ipdo,rp, length);
+		if (dp != NULL && parsefsinfo(ipdo,dp) != 0)
 			return;
 		break;
 
 	case NFSPROC_PATHCONF:
 		printf(" pathconf");
-		dp = parserep(rp, length);
-		if (dp != NULL && parsepathconf(dp) != 0)
+		dp = parserep(ipdo,rp, length);
+		if (dp != NULL && parsepathconf(ipdo,dp) != 0)
 			return;
 		break;
 
 	case NFSPROC_COMMIT:
 		printf(" commit");
-		dp = parserep(rp, length);
-		if (dp != NULL && parsewccres(dp, vflag) != 0)
+		dp = parserep(ipdo,rp, length);
+		if (dp != NULL && parsewccres(ipdo,dp, vflag) != 0)
 			return;
 		break;
 

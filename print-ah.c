@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ah.c,v 1.15 2001-09-17 21:57:54 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ah.c,v 1.15.2.1 2001-10-01 04:02:20 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,11 +41,13 @@ static const char rcsid[] =
 
 #include "ah.h"
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 int
-ah_print(register const u_char *bp, register const u_char *bp2)
+ah_print(struct netdissect_options *ipdo,
+	 register const u_char *bp, register const u_char *bp2)
 {
 	register const struct ah *ah;
 	register const u_char *ep;

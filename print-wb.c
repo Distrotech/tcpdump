@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-wb.c,v 1.26 2001-06-27 05:37:19 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-wb.c,v 1.26.2.1 2001-10-01 04:02:58 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -35,6 +35,7 @@ static const char rcsid[] =
 
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -181,7 +182,8 @@ struct pkt_prep {
 };
 
 static int
-wb_id(const struct pkt_id *id, u_int len)
+wb_id(struct netdissect_options *ipdo,
+      const struct pkt_id *id, u_int len)
 {
 	int i;
 	const char *cp;
@@ -226,7 +228,8 @@ wb_id(const struct pkt_id *id, u_int len)
 }
 
 static int
-wb_rreq(const struct pkt_rreq *rreq, u_int len)
+wb_rreq(struct netdissect_options *ipdo,
+	const struct pkt_rreq *rreq, u_int len)
 {
 	printf(" wb-rreq:");
 	if (len < sizeof(*rreq) || (u_char *)(rreq + 1) > snapend)
@@ -242,7 +245,8 @@ wb_rreq(const struct pkt_rreq *rreq, u_int len)
 }
 
 static int
-wb_preq(const struct pkt_preq *preq, u_int len)
+wb_preq(struct netdissect_options *ipdo,
+	const struct pkt_preq *preq, u_int len)
 {
 	printf(" wb-preq:");
 	if (len < sizeof(*preq) || (u_char *)(preq + 1) > snapend)
@@ -256,7 +260,8 @@ wb_preq(const struct pkt_preq *preq, u_int len)
 }
 
 static int
-wb_prep(const struct pkt_prep *prep, u_int len)
+wb_prep(struct netdissect_options *ipdo,
+	const struct pkt_prep *prep, u_int len)
 {
 	int n;
 	const struct pgstate *ps;
@@ -309,7 +314,8 @@ char *dopstr[] = {
 };
 
 static int
-wb_dops(const struct dophdr *dh, u_int32_t ss, u_int32_t es)
+wb_dops(struct netdissect_options *ipdo,
+	const struct dophdr *dh, u_int32_t ss, u_int32_t es)
 {
 	printf(" <");
 	for ( ; ss <= es; ++ss) {
@@ -341,7 +347,8 @@ wb_dops(const struct dophdr *dh, u_int32_t ss, u_int32_t es)
 }
 
 static int
-wb_rrep(const struct pkt_rrep *rrep, u_int len)
+wb_rrep(struct netdissect_options *ipdo,
+	const struct pkt_rrep *rrep, u_int len)
 {
 	const struct pkt_dop *dop = &rrep->pr_dop;
 
@@ -358,13 +365,15 @@ wb_rrep(const struct pkt_rrep *rrep, u_int len)
 	    (u_int32_t)ntohl(dop->pd_eseq));
 
 	if (vflag)
-		return (wb_dops((const struct dophdr *)(dop + 1),
-		    ntohl(dop->pd_sseq), ntohl(dop->pd_eseq)));
+		return (wb_dops(ipdo,
+				(const struct dophdr *)(dop + 1),
+				ntohl(dop->pd_sseq), ntohl(dop->pd_eseq)));
 	return (0);
 }
 
 static int
-wb_drawop(const struct pkt_dop *dop, u_int len)
+wb_drawop(struct netdissect_options *ipdo,
+	  const struct pkt_dop *dop, u_int len)
 {
 	printf(" wb-dop:");
 	if (len < sizeof(*dop) || (u_char *)(dop + 1) > snapend)
@@ -378,7 +387,8 @@ wb_drawop(const struct pkt_dop *dop, u_int len)
 	    (u_int32_t)ntohl(dop->pd_eseq));
 
 	if (vflag)
-		return (wb_dops((const struct dophdr *)(dop + 1),
+		return (wb_dops(ipdo,
+				(const struct dophdr *)(dop + 1),
 				ntohl(dop->pd_sseq), ntohl(dop->pd_eseq)));
 	return (0);
 }
@@ -387,7 +397,8 @@ wb_drawop(const struct pkt_dop *dop, u_int len)
  * Print whiteboard multicast packets.
  */
 void
-wb_print(register const void *hdr, register u_int len)
+wb_print(struct netdissect_options *ipdo,
+	 register const void *hdr, register u_int len)
 {
 	register const struct pkt_hdr *ph;
 
@@ -407,32 +418,32 @@ wb_print(register const void *hdr, register u_int len)
 		return;
 
 	case PT_ID:
-		if (wb_id((struct pkt_id *)(ph + 1), len) >= 0)
+		if (wb_id(ipdo,(struct pkt_id *)(ph + 1), len) >= 0)
 			return;
 		break;
 
 	case PT_RREQ:
-		if (wb_rreq((struct pkt_rreq *)(ph + 1), len) >= 0)
+		if (wb_rreq(ipdo,(struct pkt_rreq *)(ph + 1), len) >= 0)
 			return;
 		break;
 
 	case PT_RREP:
-		if (wb_rrep((struct pkt_rrep *)(ph + 1), len) >= 0)
+		if (wb_rrep(ipdo,(struct pkt_rrep *)(ph + 1), len) >= 0)
 			return;
 		break;
 
 	case PT_DRAWOP:
-		if (wb_drawop((struct pkt_dop *)(ph + 1), len) >= 0)
+		if (wb_drawop(ipdo,(struct pkt_dop *)(ph + 1), len) >= 0)
 			return;
 		break;
 
 	case PT_PREQ:
-		if (wb_preq((struct pkt_preq *)(ph + 1), len) >= 0)
+		if (wb_preq(ipdo,(struct pkt_preq *)(ph + 1), len) >= 0)
 			return;
 		break;
 
 	case PT_PREP:
-		if (wb_prep((struct pkt_prep *)(ph + 1), len) >= 0)
+		if (wb_prep(ipdo,(struct pkt_prep *)(ph + 1), len) >= 0)
 			return;
 		break;
 

@@ -22,7 +22,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-lane.c,v 1.12 2001-07-05 18:54:15 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-lane.c,v 1.12.2.1 2001-10-01 04:02:38 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,13 +40,15 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ether.h"
 #include "lane.h"
 
 static inline void
-lane_print(register const u_char *bp, int length)
+lane_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, int length)
 {
 	register const struct lecdatahdr_8023 *ep;
 
@@ -54,15 +56,15 @@ lane_print(register const u_char *bp, int length)
 	if (qflag)
 		(void)printf("lecid:%d %s %s %d: ",
 			     ntohs(ep->le_header),
-			     etheraddr_string(ep->h_source),
-			     etheraddr_string(ep->h_dest),
+			     etheraddr_string(ipdo,ep->h_source),
+			     etheraddr_string(ipdo,ep->h_dest),
 			     length);
 	else
 		(void)printf("lecid:%d %s %s %s %d: ",
 			     ntohs(ep->le_header),
-			     etheraddr_string(ep->h_source),
-			     etheraddr_string(ep->h_dest),
-			     etherproto_string(ep->h_type),
+			     etheraddr_string(ipdo,ep->h_source),
+			     etheraddr_string(ipdo,ep->h_dest),
+			     etherproto_string(ipdo, ep->h_type),
 			     length);
 }
 
@@ -80,9 +82,10 @@ lane_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	struct lecdatahdr_8023 *ep;
 	u_short ether_type;
 	u_short extracted_ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < sizeof(struct lecdatahdr_8023)) {
 		printf("[|lane]");
@@ -90,7 +93,7 @@ lane_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	}
 
 	if (eflag)
-		lane_print(p, length);
+		lane_print(ipdo, p, length);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -113,23 +116,24 @@ lane_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	extracted_ethertype = 0;
 	if (ether_type < ETHERMTU) {
 		/* Try to print the LLC-layer header & higher layers */
-		if (llc_print(p, length, caplen, ep->h_source, ep->h_dest,
-		    &extracted_ethertype) == 0) {
+		if (llc_print(ipdo, p, length, caplen, ep->h_source,
+			      ep->h_dest,&extracted_ethertype) == 0) {
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				lane_print((u_char *)ep, length + sizeof(*ep));
+				lane_print(ipdo, (u_char *)ep, length + sizeof(*ep));
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			       etherproto_string(htons(extracted_ethertype)));
+			       etherproto_string(ipdo,
+						 htons(extracted_ethertype)));
 			}
 			if (!xflag && !qflag)
 				default_print(p, caplen);
 		}
-	} else if (ether_encap_print(ether_type, p, length, caplen,
+	} else if (ether_encap_print(ipdo, ether_type, p, length, caplen,
 	    &extracted_ethertype) == 0) {
 		/* ether_type not known, print raw packet */
 		if (!eflag)
-			lane_print((u_char *)ep, length + sizeof(*ep));
+			lane_print(ipdo, (u_char *)ep, length + sizeof(*ep));
 		if (!xflag && !qflag)
 			default_print(p, caplen);
 	}

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-raw.c,v 1.34 2001-07-05 18:54:17 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-raw.c,v 1.34.2.1 2001-10-01 04:02:48 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,6 +40,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "addrtoname.h"
 #include "interface.h"
 
@@ -52,9 +53,10 @@ raw_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 {
 	u_int length = h->len;
 	u_int caplen = h->caplen;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo,&h->ts);
 
 	/*
 	 * Some printers want to get back at the link level addresses,
@@ -67,7 +69,7 @@ raw_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	if (eflag)
 		printf("ip: ");
 
-	ipN_print(p, length);
+	ipN_print(ipdo,p, length);
 
 	if (xflag)
 		default_print(p, caplen);

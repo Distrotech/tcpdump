@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-icmp6.c,v 1.56 2001-06-27 02:48:43 itojun Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-icmp6.c,v 1.56.2.1 2001-10-01 04:02:31 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -49,6 +49,7 @@ static const char rcsid[] =
 #include "ip6.h"
 #include "icmp6.h"
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -58,12 +59,17 @@ static const char rcsid[] =
 static const char *get_rtpref(u_int);
 static const char *get_lifetime(u_int32_t);
 static void print_lladdr(const u_char *, size_t);
-void icmp6_opt_print(const u_char *, int);
-void mld6_print(const u_char *);
-static struct udphdr *get_upperlayer(u_char *, int *);
+void icmp6_opt_print(struct netdissect_options *ndo,
+		     const u_char *, int);
+void mld6_print(struct netdissect_options *ndo,
+		const u_char *);
+static struct udphdr *get_upperlayer(struct netdissect_options *ndo,
+				     u_char *, int *);
 static void dnsname_print(const u_char *, const u_char *);
-void icmp6_nodeinfo_print(int, const u_char *, const u_char *);
-void icmp6_rrenum_print(int, const u_char *, const u_char *);
+void icmp6_nodeinfo_print(struct netdissect_options *ndo,
+			  int, const u_char *, const u_char *);
+void icmp6_rrenum_print(struct netdissect_options *ndo,
+			int, const u_char *, const u_char *);
 
 #ifndef abs
 #define abs(a)	((0 < (a)) ? (a) : -(a))
@@ -111,7 +117,8 @@ print_lladdr(const u_int8_t *p, size_t l)
 }
 
 void
-icmp6_print(const u_char *bp, const u_char *bp2)
+icmp6_print(struct netdissect_options *ndo,
+	    const u_char *bp, const u_char *bp2)
 {
 	const struct icmp6_hdr *dp;
 	const struct ip6_hdr *ip;
@@ -158,7 +165,7 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 			       ip6addr_string(&oip->ip6_dst));
 			break;
 		case ICMP6_DST_UNREACH_NOPORT:
-			if ((ouh = get_upperlayer((u_char *)oip, &prot))
+			if ((ouh = get_upperlayer(ndo, (u_char *)oip, &prot))
 			    == NULL)
 				goto trunc;
 
@@ -167,12 +174,12 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 			case IPPROTO_TCP:
 				printf("icmp6: %s tcp port %s unreachable",
 					ip6addr_string(&oip->ip6_dst),
-					tcpport_string(dport));
+					tcpport_string(ndo, dport));
 				break;
 			case IPPROTO_UDP:
 				printf("icmp6: %s udp port %s unreachable",
 					ip6addr_string(&oip->ip6_dst),
-					udpport_string(dport));
+					udpport_string(ndo, dport));
 				break;
 			default:
 				printf("icmp6: %s protocol %d port %d unreachable",
@@ -237,21 +244,22 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 		break;
 	case ICMP6_MEMBERSHIP_QUERY:
 		printf("icmp6: multicast listener query ");
-		mld6_print((const u_char *)dp);
+		mld6_print(ndo, (const u_char *)dp);
 		break;
 	case ICMP6_MEMBERSHIP_REPORT:
 		printf("icmp6: multicast listener report ");
-		mld6_print((const u_char *)dp);
+		mld6_print(ndo, (const u_char *)dp);
 		break;
 	case ICMP6_MEMBERSHIP_REDUCTION:
 		printf("icmp6: multicast listener done ");
-		mld6_print((const u_char *)dp);
+		mld6_print(ndo, (const u_char *)dp);
 		break;
 	case ND_ROUTER_SOLICIT:
 		printf("icmp6: router solicitation ");
 		if (vflag) {
 #define RTSOLLEN 8
-			icmp6_opt_print((const u_char *)dp + RTSOLLEN,
+			icmp6_opt_print(ndo,
+					(const u_char *)dp + RTSOLLEN,
 					icmp6len - RTSOLLEN);
 		}
 		break;
@@ -283,7 +291,8 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 			printf("retrans_time=%u)",
 				(u_int32_t)ntohl(p->nd_ra_retransmit));
 #define RTADVLEN 16
-			icmp6_opt_print((const u_char *)dp + RTADVLEN,
+			icmp6_opt_print(ndo,
+					(const u_char *)dp + RTADVLEN,
 					icmp6len - RTADVLEN);
 		}
 		break;
@@ -296,7 +305,8 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 			ip6addr_string(&p->nd_ns_target));
 		if (vflag) {
 #define NDSOLLEN 24
-			icmp6_opt_print((const u_char *)dp + NDSOLLEN,
+			icmp6_opt_print(ndo,
+					(const u_char *)dp + NDSOLLEN,
 					icmp6len - NDSOLLEN);
 		}
 	    }
@@ -328,7 +338,8 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 				printf(")");
 			}
 #define NDADVLEN 24
-			icmp6_opt_print((const u_char *)dp + NDADVLEN,
+			icmp6_opt_print(ndo,
+					(const u_char *)dp + NDADVLEN,
 					icmp6len - NDADVLEN);
 #undef NDADVLEN
 		}
@@ -338,23 +349,24 @@ icmp6_print(const u_char *bp, const u_char *bp2)
 #define RDR(i) ((struct nd_redirect *)(i))
 		TCHECK(RDR(dp)->nd_rd_dst);
 		printf("icmp6: redirect %s",
-		    getname6((const u_char *)&RDR(dp)->nd_rd_dst));
+		    getname6(ndo, (const u_char *)&RDR(dp)->nd_rd_dst));
 		printf(" to %s",
-		    getname6((const u_char*)&RDR(dp)->nd_rd_target));
+		    getname6(ndo, (const u_char*)&RDR(dp)->nd_rd_target));
 #define REDIRECTLEN 40
 		if (vflag) {
-			icmp6_opt_print((const u_char *)dp + REDIRECTLEN,
+			icmp6_opt_print(ndo,
+					(const u_char *)dp + REDIRECTLEN,
 					icmp6len - REDIRECTLEN);
 		}
 		break;
 #undef REDIRECTLEN
 #undef RDR
 	case ICMP6_ROUTER_RENUMBERING:
-		icmp6_rrenum_print(icmp6len, bp, ep);
+		icmp6_rrenum_print(ndo, icmp6len, bp, ep);
 		break;
 	case ICMP6_NI_QUERY:
 	case ICMP6_NI_REPLY:
-		icmp6_nodeinfo_print(icmp6len, bp, ep);
+		icmp6_nodeinfo_print(ndo, icmp6len, bp, ep);
 		break;
 	default:
 		printf("icmp6: type-#%d", dp->icmp6_type);
@@ -366,7 +378,8 @@ trunc:
 }
 
 static struct udphdr *
-get_upperlayer(u_char *bp, int *prot)
+get_upperlayer(struct netdissect_options *ndo,
+	       u_char *bp, int *prot)
 {
 	const u_char *ep;
 	struct ip6_hdr *ip6 = (struct ip6_hdr *)bp;
@@ -439,7 +452,8 @@ get_upperlayer(u_char *bp, int *prot)
 }
 
 void
-icmp6_opt_print(const u_char *bp, int resid)
+icmp6_opt_print(struct netdissect_options *ndo,
+		const u_char *bp, int resid)
 {
 	const struct nd_opt_hdr *op;
 	const struct nd_opt_hdr *opl;	/* why there's no struct? */
@@ -591,7 +605,8 @@ icmp6_opt_print(const u_char *bp, int resid)
 }
 
 void
-mld6_print(const u_char *bp)
+mld6_print(struct netdissect_options *ndo,
+	   const u_char *bp)
 {
 	struct mld6_hdr *mp = (struct mld6_hdr *)bp;
 	const u_char *ep;
@@ -643,7 +658,8 @@ dnsname_print(const u_char *cp, const u_char *ep)
 }
 
 void
-icmp6_nodeinfo_print(int icmp6len, const u_char *bp, const u_char *ep)
+icmp6_nodeinfo_print(struct netdissect_options *ndo,
+		     int icmp6len, const u_char *bp, const u_char *ep)
 {
 	struct icmp6_nodeinfo *ni6;
 	struct icmp6_hdr *dp;
@@ -730,7 +746,7 @@ icmp6_nodeinfo_print(int icmp6len, const u_char *bp, const u_char *ep)
 				break;
 			}
 			printf(", subject=%s",
-			    getname6((const u_char *)(ni6 + 1)));
+			    getname6(ndo, (const u_char *)(ni6 + 1)));
 			break;
 		case ICMP6_NI_SUBJ_FQDN:
 			printf(", subject=DNS name");
@@ -758,7 +774,7 @@ icmp6_nodeinfo_print(int icmp6len, const u_char *bp, const u_char *ep)
 				break;
 			}
 			printf(", subject=%s",
-			    getname((const u_char *)(ni6 + 1)));
+			    getname(ndo, (const u_char *)(ni6 + 1)));
 			break;
 		default:
 			printf(", unknown subject");
@@ -855,7 +871,7 @@ icmp6_nodeinfo_print(int icmp6len, const u_char *bp, const u_char *ep)
 			while (i < siz) {
 				if (i + sizeof(struct in6_addr) + sizeof(int32_t) > siz)
 					break;
-				printf(" %s", getname6(bp + i));
+				printf(" %s", getname6(ndo, bp + i));
 				i += sizeof(struct in6_addr);
 				printf("(%d)", (int32_t)ntohl(*(int32_t *)(bp + i)));
 				i += sizeof(int32_t);
@@ -890,7 +906,8 @@ trunc:
 }
 
 void
-icmp6_rrenum_print(int icmp6len, const u_char *bp, const u_char *ep)
+icmp6_rrenum_print(struct netdissect_options *ndo,
+		   int icmp6len, const u_char *bp, const u_char *ep)
 {
 	struct icmp6_router_renum *rr6;
 	struct icmp6_hdr *dp;

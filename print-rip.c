@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-rip.c,v 1.49 2001-05-10 05:30:22 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-rip.c,v 1.49.2.1 2001-10-01 04:02:48 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 #include <ctype.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -74,7 +75,8 @@ rip_printblk(const u_char *cp, const u_char *ep)
 }
 
 static void
-rip_entry_print_v1(register int vers, register const struct rip_netinfo *ni)
+rip_entry_print_v1(struct netdissect_options *ipdo,
+		   register int vers, register const struct rip_netinfo *ni)
 {
 	register u_short family;
 
@@ -102,7 +104,8 @@ rip_entry_print_v1(register int vers, register const struct rip_netinfo *ni)
 }
 
 static void
-rip_entry_print_v2(register int vers, register const struct rip_netinfo *ni)
+rip_entry_print_v2(struct netdissect_options *ipdo,
+		   register int vers, register const struct rip_netinfo *ni)
 {
 	register u_char *p;
 	register u_short family;
@@ -155,7 +158,8 @@ rip_entry_print_v2(register int vers, register const struct rip_netinfo *ni)
 }
 
 void
-rip_print(const u_char *dat, u_int length)
+rip_print(struct netdissect_options *ipdo,
+	  const u_char *dat, u_int length)
 {
 	register const struct rip *rp;
 	register const struct rip_netinfo *ni;
@@ -205,9 +209,9 @@ rip_print(const u_char *dat, u_int length)
 			ni = (struct rip_netinfo *)(rp + 1);
 			for (; (i -= sizeof(*ni)) >= 0; ++ni) {
 				if (rp->rip_vers == 1)
-					rip_entry_print_v1(rp->rip_vers, ni);
+					rip_entry_print_v1(ipdo, rp->rip_vers, ni);
 				else
-					rip_entry_print_v2(rp->rip_vers, ni);
+					rip_entry_print_v2(ipdo, rp->rip_vers, ni);
 			}
 			if (trunc)
 				printf("[|rip]");

@@ -22,7 +22,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-cip.c,v 1.16 2001-09-23 21:52:38 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-cip.c,v 1.16.2.1 2001-10-01 04:02:25 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
@@ -58,7 +59,8 @@ static unsigned char rfcllc[] = {
 	0x00 };
 
 static inline void
-cip_print(register const u_char *bp, int length)
+cip_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, int length)
 {
 	/*
 	 * There is no MAC-layer header, so just print the length.
@@ -78,9 +80,10 @@ cip_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	u_int caplen = h->caplen;
 	u_int length = h->len;
 	u_short extracted_ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (memcmp(rfcllc, p, sizeof(rfcllc))==0 && caplen < RFC1483LLC_LEN) {
 		printf("[|cip]");
@@ -88,7 +91,7 @@ cip_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	}
 
 	if (eflag)
-		cip_print(p, length);
+		cip_print(ipdo, p, length);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -102,14 +105,15 @@ cip_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		/*
 		 * LLC header is present.  Try to print it & higher layers.
 		 */
-		if (llc_print(p, length, caplen, NULL, NULL,
-		    &extracted_ethertype) == 0) {
+		if (llc_print(ndo, p, length, caplen, NULL, NULL,
+			      &extracted_ethertype) == 0) {
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				cip_print(p, length);
+				cip_print(ipdo, p, length);
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			       etherproto_string(htons(extracted_ethertype)));
+			       etherproto_string(ipdo,
+						 htons(extracted_ethertype)));
 			}
 			if (!xflag && !qflag)
 				default_print(p, caplen);
@@ -118,7 +122,7 @@ cip_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 		/*
 		 * LLC header is absent; treat it as just IP.
 		 */
-		ip_print(p, length);
+		ip_print(ipdo, p, length);
 	}
 
 	if (xflag)

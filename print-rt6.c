@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-rt6.c,v 1.18 2001-06-15 22:17:34 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-rt6.c,v 1.18.2.1 2001-10-01 04:02:49 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,11 +42,13 @@ static const char rcsid[] =
 
 #include "ip6.h"
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 int
-rt6_print(register const u_char *bp, register const u_char *bp2)
+rt6_print(struct netdissect_options *ndo,
+	  register const u_char *bp, register const u_char *bp2)
 {
 	register const struct ip6_rthdr *dp;
 	register const struct ip6_rthdr0 *dp0;

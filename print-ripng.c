@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ripng.c,v 1.8 2001-05-10 05:30:22 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ripng.c,v 1.8.2.1 2001-10-01 04:02:48 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,12 +40,14 @@ static const char rcsid[] =
 #include <errno.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "route6d.h"
 #include "interface.h"
 #include "addrtoname.h"
 
 static int
-rip6_entry_print(register const struct netinfo6 *ni, int metric)
+rip6_entry_print(struct netdissect_options *ndo,
+		 register const struct netinfo6 *ni, int metric)
 {
 	int l;
 	l = printf("%s/%d", ip6addr_string(&ni->rip6_dest), ni->rip6_plen);
@@ -57,7 +59,8 @@ rip6_entry_print(register const struct netinfo6 *ni, int metric)
 }
 
 void
-ripng_print(const u_char *dat, int length)
+ripng_print(struct netdissect_options *ndo,
+	    const u_char *dat, int length)
 {
 	register const struct rip6 *rp = (struct rip6 *)dat;
 	register const struct netinfo6 *ni;
@@ -90,7 +93,7 @@ ripng_print(const u_char *dat, int length)
 				printf("\n\t");
 			else
 				printf(" ");
-			rip6_entry_print(ni, 0);
+			rip6_entry_print(ndo, ni, 0);
 		}
 		break;
 	case RIP6_RESPONSE:
@@ -105,7 +108,7 @@ ripng_print(const u_char *dat, int length)
 				printf("\n\t");
 			else
 				printf(" ");
-			rip6_entry_print(ni, ni->rip6_metric);
+			rip6_entry_print(ndo, ni, ni->rip6_metric);
 		}
 		if (trunc)
 			printf("[|rip]");

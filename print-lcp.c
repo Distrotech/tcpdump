@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-"@(#) $Header: /tcpdump/master/tcpdump/Attic/print-lcp.c,v 1.9 2000-10-06 04:23:12 guy Exp $ (LBL)";
+"@(#) $Header: /tcpdump/master/tcpdump/Attic/print-lcp.c,v 1.9.2.1 2001-10-01 04:02:39 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -37,6 +37,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -116,7 +117,8 @@ static struct tok lcpchap2str[] = {
 };
 
 void
-lcp_print(register const u_char *bp, u_int length)
+lcp_print(struct netdissect_options *ipdo,
+	  register const u_char *bp, u_int length)
 {
   u_short lcp_code, lcp_id, lcp_length;
   const u_char *lcp_data;
@@ -203,7 +205,7 @@ lcp_print(register const u_char *bp, u_int length)
   case LCP_CODEREJ:
     if (snapend < lcp_data+4) return;
     printf(" ");
-    lcp_print(lcp_data, (lcp_length+lcp_data > snapend ? snapend-lcp_data : lcp_length));
+    lcp_print(ipdo, lcp_data, (lcp_length+lcp_data > snapend ? snapend-lcp_data : lcp_length));
     break;
   case LCP_TERMREQ:
   case LCP_TERMACK:

@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-icmp.c,v 1.62 2001-07-24 16:56:11 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-icmp.c,v 1.62.2.1 2001-10-01 04:02:31 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,6 +41,7 @@ struct rtentry;
 #include <string.h>
 #include <netdb.h>		/* for MAXHOSTNAMELEN on some platforms */
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"			/* must come after interface.h */
@@ -268,7 +269,8 @@ struct id_rdiscovery {
 };
 
 void
-icmp_print(const u_char *bp, u_int plen, const u_char *bp2)
+icmp_print(struct netdissect_options *ipdo,
+	   const u_char *bp, u_int plen, const u_char *bp2)
 {
 	char *cp;
 	const struct icmp *dp;
@@ -310,14 +312,14 @@ icmp_print(const u_char *bp, u_int plen, const u_char *bp2)
 				(void)snprintf(buf, sizeof(buf),
 					"%s tcp port %s unreachable",
 					ipaddr_string(&oip->ip_dst),
-					tcpport_string(dport));
+					tcpport_string(ipdo, dport));
 				break;
 
 			case IPPROTO_UDP:
 				(void)snprintf(buf, sizeof(buf),
 					"%s udp port %s unreachable",
 					ipaddr_string(&oip->ip_dst),
-					udpport_string(dport));
+					udpport_string(ipdo, dport));
 				break;
 
 			default:
@@ -486,7 +488,7 @@ icmp_print(const u_char *bp, u_int plen, const u_char *bp2)
  		(void)printf(" for ");
  		ip = (struct ip *)bp;
  		snaplen = snapend - bp;
- 		ip_print(bp, ntohs(ip->ip_len));
+ 		ip_print(ipdo, bp, ntohs(ip->ip_len));
  	}
 	return;
 trunc:

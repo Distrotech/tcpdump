@@ -12,7 +12,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/smbutil.c,v 1.17 2001-09-17 21:58:05 fenner Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/smbutil.c,v 1.17.2.1 2001-10-01 04:02:59 mcr Exp $";
 #endif
 
 #include <sys/param.h>
@@ -28,6 +28,7 @@ static const char rcsid[] =
 #include <string.h>
 #include <time.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "smb.h"
 
@@ -123,7 +124,8 @@ interpret_long_date(const char *p)
  * we run past the end of the buffer
  */
 static int
-name_interpret(const u_char *in, const u_char *maxbuf, char *out)
+name_interpret(struct netdissect_options *ipdo,
+	       const u_char *in, const u_char *maxbuf, char *out)
 {
     int ret;
     int len;
@@ -163,7 +165,8 @@ trunc:
  * find a pointer to a netbios name
  */
 static const u_char *
-name_ptr(const u_char *buf, int ofs, const u_char *maxbuf)
+name_ptr(struct netdissect_options *ipdo,
+	 const u_char *buf, int ofs, const u_char *maxbuf)
 {
     const u_char *p;
     u_char c;
@@ -198,13 +201,14 @@ trunc:
  * extract a netbios name from a buf
  */
 static int
-name_extract(const u_char *buf, int ofs, const u_char *maxbuf, char *name)
+name_extract(struct netdissect_options *ndo,
+	     const u_char *buf, int ofs, const u_char *maxbuf, char *name)
 {
-    const u_char *p = name_ptr(buf, ofs, maxbuf);
+    const u_char *p = name_ptr(ndo, buf, ofs, maxbuf);
     if (p == NULL)
 	return(-1);	/* error (probably name going past end of buffer) */
     name[0] = '\0';
-    return(name_interpret(p, maxbuf, name));
+    return(name_interpret(ndo, p, maxbuf, name));
 }
 
 
@@ -212,7 +216,8 @@ name_extract(const u_char *buf, int ofs, const u_char *maxbuf, char *name)
  * return the total storage length of a mangled name
  */
 static int
-name_len(const unsigned char *s, const unsigned char *maxbuf)
+name_len(struct netdissect_options *ipdo,
+	 const unsigned char *s, const unsigned char *maxbuf)
 {
     const unsigned char *s0 = s;
     unsigned char c;
@@ -261,7 +266,8 @@ name_type_str(int name_type)
 }
 
 void
-print_data(const unsigned char *buf, int len)
+print_data(struct netdissect_options *ipdo,
+	   const unsigned char *buf, int len)
 {
     int i = 0;
 
@@ -359,7 +365,8 @@ unistr(const char *s, int *len)
 }
 
 static const u_char *
-smb_fdata1(const u_char *buf, const char *fmt, const u_char *maxbuf)
+smb_fdata1(struct netdissect_options *ipdo,
+	   const u_char *buf, const char *fmt, const u_char *maxbuf)
 {
     int reverse = 0;
     char *attrib_fmt = "READONLY|HIDDEN|SYSTEM|VOLUME|DIR|ARCHIVE|";
@@ -512,11 +519,11 @@ smb_fdata1(const u_char *buf, const char *fmt, const u_char *maxbuf)
 
 	    switch (t) {
 	    case 1:
-		name_type = name_extract(startbuf, PTR_DIFF(buf, startbuf),
+		name_type = name_extract(ndo, startbuf, PTR_DIFF(buf, startbuf),
 		    maxbuf, nbuf);
 		if (name_type < 0)
 		    goto trunc;
-		len = name_len(buf, maxbuf);
+		len = name_len(ndo, buf, maxbuf);
 		if (len < 0)
 		    goto trunc;
 		buf += len;
@@ -585,7 +592,8 @@ trunc:
 }
 
 const u_char *
-smb_fdata(const u_char *buf, const char *fmt, const u_char *maxbuf)
+smb_fdata(struct netdissect_options *ipdo,
+	  const u_char *buf, const char *fmt, const u_char *maxbuf)
 {
     static int depth = 0;
     char s[128];
@@ -598,7 +606,7 @@ smb_fdata(const u_char *buf, const char *fmt, const u_char *maxbuf)
 	    while (buf < maxbuf) {
 		const u_char *buf2;
 		depth++;
-		buf2 = smb_fdata(buf, fmt, maxbuf);
+		buf2 = smb_fdata(ndo, buf, fmt, maxbuf);
 		depth--;
 		if (buf2 == buf)
 		    return(buf);
@@ -635,7 +643,7 @@ smb_fdata(const u_char *buf, const char *fmt, const u_char *maxbuf)
 	    strncpy(s, fmt, p - fmt);
 	    s[p - fmt] = '\0';
 	    fmt = p + 1;
-	    buf = smb_fdata1(buf, s, maxbuf);
+	    buf = smb_fdata1(ndo, buf, s, maxbuf);
 	    if (buf == NULL)
 		return(NULL);
 	    break;
@@ -650,7 +658,7 @@ smb_fdata(const u_char *buf, const char *fmt, const u_char *maxbuf)
     if (!depth && buf < maxbuf) {
 	size_t len = PTR_DIFF(maxbuf, buf);
 	printf("Data: (%lu bytes)\n", (unsigned long)len);
-	print_data(buf, len);
+	print_data(ndo, buf, len);
 	return(buf + len);
     }
     return(buf);
@@ -774,7 +782,8 @@ static struct {
  * return a SMB error string from a SMB buffer
  */
 char *
-smb_errstr(int class, int num)
+smb_errstr(struct netdissect_options *ndo,
+	   int class, int num)
 {
     static char ret[128];
     int i, j;

@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-igrp.c,v 1.16 2001-06-15 22:17:32 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-igrp.c,v 1.16.2.1 2001-10-01 04:02:32 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <errno.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "igrp.h"
@@ -82,7 +83,8 @@ static struct tok op2str[] = {
 };
 
 void
-igrp_print(register const u_char *bp, u_int length, register const u_char *bp2)
+igrp_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, u_int length, register const u_char *bp2)
 {
 	register struct igrphdr *hdr;
 	register struct ip *ip;

@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-l2tp.c,v 1.8 2000-08-18 07:44:46 itojun Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-l2tp.c,v 1.8.2.1 2001-10-01 04:02:38 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -36,6 +36,7 @@ static const char rcsid[] =
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#define AVOID_CHURN 1
 #include "l2tp.h"
 #include "interface.h"
 
@@ -110,7 +111,7 @@ static void l2tp_random_vector_print(const u_char *dat, u_int length);
 static void l2tp_private_grp_id_print(const u_char *dat, u_int length);
 static void l2tp_rx_conn_speed_print(const u_char *dat, u_int length);
 static void l2tp_seq_required_print(const u_char *dat, u_int length);
-static void l2tp_avp_print(const u_char *dat, u_int length);
+static void l2tp_avp_print(struct netdissect_options *, const u_char *dat, u_int length);
 
 static struct l2tp_avp_vec l2tp_avp[] = {
   {"MSGTYPE", l2tp_msgtype_print}, 		/* 0  Message Type */
@@ -567,7 +568,8 @@ l2tp_seq_required_print(const u_char *dat, u_int length)
 }
 
 static void
-l2tp_avp_print(const u_char *dat, u_int length)
+l2tp_avp_print(struct netdissect_options *ipdo,
+	       const u_char *dat, u_int length)
 {
 	u_int len;
 	const u_short *ptr = (u_short *)dat;
@@ -618,7 +620,7 @@ l2tp_avp_print(const u_char *dat, u_int length)
 			}
 		}
 
-		l2tp_avp_print(dat + len, length - len);
+		l2tp_avp_print(ipdo, dat + len, length - len);
 	} else if (length == 0) {
 		return;
 	} else {
@@ -628,7 +630,8 @@ l2tp_avp_print(const u_char *dat, u_int length)
 
 
 void
-l2tp_print(const u_char *dat, u_int length)
+l2tp_print(struct netdissect_options *ipdo,
+	   const u_char *dat, u_int length)
 {
 	const u_short *ptr = (u_short *)dat;
 	u_int cnt = 0;			/* total octets consumed */
@@ -709,11 +712,11 @@ l2tp_print(const u_char *dat, u_int length)
 		if (length - cnt == 0) {
 			printf(" ZLB");
 		} else {
-			l2tp_avp_print((u_char *)ptr, length - cnt);
+			l2tp_avp_print(ipdo, (u_char *)ptr, length - cnt);
 		}
 	} else {
 		printf(" {");
-		ppp_print((u_char *)ptr, length - cnt);
+		ppp_print(ipdo, (u_char *)ptr, length - cnt);
 		printf("}");
 	}
 }	

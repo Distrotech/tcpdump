@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-dvmrp.c,v 1.21 2001-05-10 05:30:20 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-dvmrp.c,v 1.21.2.1 2001-10-01 04:02:27 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,6 +39,7 @@ static const char rcsid[] =
 #include <stdlib.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "extract.h"
 #include "addrtoname.h"
@@ -67,18 +68,26 @@ static const char rcsid[] =
 #define DVMRP_NF_DISABLED	0x20	/* administratively disabled */
 #define DVMRP_NF_QUERIER	0x40	/* I am the subnet's querier */
 
-static void print_probe(const u_char *, const u_char *, u_int);
-static void print_report(const u_char *, const u_char *, u_int);
-static void print_neighbors(const u_char *, const u_char *, u_int);
-static void print_neighbors2(const u_char *, const u_char *, u_int);
-static void print_prune(const u_char *, const u_char *, u_int);
-static void print_graft(const u_char *, const u_char *, u_int);
-static void print_graft_ack(const u_char *, const u_char *, u_int);
+static void print_probe(struct netdissect_options *,
+			const u_char *, const u_char *, u_int);
+static void print_report(struct netdissect_options *,
+			 const u_char *, const u_char *, u_int);
+static void print_neighbors(struct netdissect_options *,
+			    const u_char *, const u_char *, u_int);
+static void print_neighbors2(struct netdissect_options *,
+			     const u_char *, const u_char *, u_int);
+static void print_prune(struct netdissect_options *,
+			const u_char *, const u_char *, u_int);
+static void print_graft(struct netdissect_options *,
+			const u_char *, const u_char *, u_int);
+static void print_graft_ack(struct netdissect_options *,
+			    const u_char *, const u_char *, u_int);
 
 static u_int32_t target_level;
 
 void
-dvmrp_print(register const u_char *bp, register u_int len)
+dvmrp_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, register u_int len)
 {
 	register const u_char *ep;
 	register u_char type;
@@ -98,13 +107,13 @@ dvmrp_print(register const u_char *bp, register u_int len)
 	case DVMRP_PROBE:
 		printf(" Probe");
 		if (vflag)
-			print_probe(bp, ep, len);
+			print_probe(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_REPORT:
 		printf(" Report");
 		if (vflag > 1)
-			print_report(bp, ep, len);
+			print_report(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_ASK_NEIGHBORS:
@@ -113,7 +122,7 @@ dvmrp_print(register const u_char *bp, register u_int len)
 
 	case DVMRP_NEIGHBORS:
 		printf(" Neighbors(old)");
-		print_neighbors(bp, ep, len);
+		print_neighbors(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_ASK_NEIGHBORS2:
@@ -130,22 +139,22 @@ dvmrp_print(register const u_char *bp, register u_int len)
 		target_level = (bp[0] << 24) | (bp[1] << 16) |
 		    (bp[2] << 8) | bp[3];
 		bp += 4;
-		print_neighbors2(bp, ep, len);
+		print_neighbors2(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_PRUNE:
 		printf(" Prune");
-		print_prune(bp, ep, len);
+		print_prune(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_GRAFT:
 		printf(" Graft");
-		print_graft(bp, ep, len);
+		print_graft(ipdo, bp, ep, len);
 		break;
 
 	case DVMRP_GRAFT_ACK:
 		printf(" Graft-ACK");
-		print_graft_ack(bp, ep, len);
+		print_graft_ack(ipdo, bp, ep, len);
 		break;
 
 	default:
@@ -155,8 +164,9 @@ dvmrp_print(register const u_char *bp, register u_int len)
 }
 
 static void
-print_report(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_report(struct netdissect_options *ipdo,
+	     register const u_char *bp, register const u_char *ep,
+	     register u_int len)
 {
 	register u_int32_t mask, origin;
 	register int metric, i, width, done;
@@ -204,8 +214,9 @@ print_report(register const u_char *bp, register const u_char *ep,
 }
 
 static void
-print_probe(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_probe(struct netdissect_options *ipdo,
+	    register const u_char *bp, register const u_char *ep,
+	    register u_int len)
 {
 	register u_int32_t genid;
 
@@ -237,8 +248,9 @@ trunc:
 }
 
 static void
-print_neighbors(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_neighbors(struct netdissect_options *ipdo,
+		register const u_char *bp, register const u_char *ep,
+		register u_int len)
 {
 	const u_char *laddr;
 	register u_char metric;
@@ -268,8 +280,9 @@ trunc:
 }
 
 static void
-print_neighbors2(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_neighbors2(struct netdissect_options *ipdo,
+		 register const u_char *bp, register const u_char *ep,
+		 register u_int len)
 {
 	const u_char *laddr;
 	register u_char metric, thresh, flags;
@@ -317,8 +330,9 @@ trunc:
 }
 
 static void
-print_prune(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_prune(struct netdissect_options *ipdo,
+	    register const u_char *bp, register const u_char *ep,
+	    register u_int len)
 {
 	TCHECK2(bp[0], 12);
 	printf(" src %s grp %s", ipaddr_string(bp), ipaddr_string(bp + 4));
@@ -331,8 +345,9 @@ trunc:
 }
 
 static void
-print_graft(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_graft(struct netdissect_options *ipdo,
+	    register const u_char *bp, register const u_char *ep,
+	    register u_int len)
 {
 	TCHECK2(bp[0], 8);
 	printf(" src %s grp %s", ipaddr_string(bp), ipaddr_string(bp + 4));
@@ -342,8 +357,9 @@ trunc:
 }
 
 static void
-print_graft_ack(register const u_char *bp, register const u_char *ep,
-    register u_int len)
+print_graft_ack(struct netdissect_options *ipdo,
+		register const u_char *bp, register const u_char *ep,
+		register u_int len)
 {
 	TCHECK2(bp[0], 8);
 	printf(" src %s grp %s", ipaddr_string(bp), ipaddr_string(bp + 4));

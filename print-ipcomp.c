@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ipcomp.c,v 1.13 2000-12-12 09:58:41 itojun Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ipcomp.c,v 1.13.4.1 2001-10-01 04:02:34 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -48,11 +48,13 @@ struct ipcomp {
 #include <zlib.h>
 #endif
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 int
-ipcomp_print(register const u_char *bp, register const u_char *bp2, int *nhdr)
+ipcomp_print(struct netdissect_options *ipdo,
+	     register const u_char *bp, register const u_char *bp2, int *nhdr)
 {
 	register const struct ipcomp *ipcomp;
 	register const u_char *ep;

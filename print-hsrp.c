@@ -31,7 +31,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-hsrp.c,v 1.1 2001-09-17 06:22:33 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-hsrp.c,v 1.1.2.1 2001-10-01 04:02:30 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -43,6 +43,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <netinet/in.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -101,7 +102,8 @@ struct hsrp {
 };
 
 void
-hsrp_print(register const u_char *bp, register u_int len)
+hsrp_print(struct netdissect_options *ndo,
+	   register const u_char *bp, register u_int len)
 {
 	int op_code, state;
 	struct hsrp *hp = (struct hsrp *) bp;

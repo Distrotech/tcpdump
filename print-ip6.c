@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ip6.c,v 1.18 2001-09-17 21:58:03 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ip6.c,v 1.18.2.1 2001-10-01 04:02:33 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,6 +42,7 @@ static const char rcsid[] =
 #include <unistd.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -51,7 +52,8 @@ static const char rcsid[] =
  * print an IP6 datagram.
  */
 void
-ip6_print(register const u_char *bp, register u_int length)
+ip6_print(struct netdissect_options *ndo,
+	  register const u_char *bp, register u_int length)
 {
 	register const struct ip6_hdr *ip6;
 	register int advance;
@@ -105,43 +107,47 @@ ip6_print(register const u_char *bp, register u_int length)
 
 		switch (nh) {
 		case IPPROTO_HOPOPTS:
-			advance = hbhopt_print(cp);
+			advance = hbhopt_print(ndo, cp);
 			nh = *cp;
 			break;
 		case IPPROTO_DSTOPTS:
-			advance = dstopt_print(cp);
+			advance = dstopt_print(ndo, cp);
 			nh = *cp;
 			break;
 		case IPPROTO_FRAGMENT:
-			advance = frag6_print(cp, (const u_char *)ip6);
+			advance = frag6_print(ndo, cp, (const u_char *)ip6);
 			if (snapend <= cp + advance)
 				goto end;
 			nh = *cp;
 			fragmented = 1;
 			break;
 		case IPPROTO_ROUTING:
-			advance = rt6_print(cp, (const u_char *)ip6);
+			advance = rt6_print(ndo, cp, (const u_char *)ip6);
 			nh = *cp;
 			break;
 		case IPPROTO_TCP:
-			tcp_print(cp, len + sizeof(struct ip6_hdr) - (cp - bp),
-				(const u_char *)ip6, fragmented);
+			tcp_print(ndo, cp,
+				  len + sizeof(struct ip6_hdr) - (cp - bp),
+				  (const u_char *)ip6, fragmented);
 			goto end;
 		case IPPROTO_UDP:
-			udp_print(cp, len + sizeof(struct ip6_hdr) - (cp - bp),
-				(const u_char *)ip6, fragmented);
+			udp_print(ndo, cp,
+				  len + sizeof(struct ip6_hdr) - (cp - bp),
+				  (const u_char *)ip6, fragmented);
 			goto end;
 		case IPPROTO_ICMPV6:
-			icmp6_print(cp, (const u_char *)ip6);
+			icmp6_print(ndo, cp, (const u_char *)ip6);
 			goto end;
 		case IPPROTO_AH:
-			advance = ah_print(cp, (const u_char *)ip6);
+			advance = ah_print(ndo, cp, (const u_char *)ip6);
 			nh = *cp;
 			break;
 		case IPPROTO_ESP:
 		    {
 			int enh, padlen;
-			advance = esp_print(cp, (const u_char *)ip6, &enh, &padlen);
+			advance = esp_print(ndo, cp,
+					    (const u_char *)ip6,
+					    &enh, &padlen);
 			if (enh < 0)
 				goto end;
 			nh = enh & 0xff;
@@ -154,7 +160,8 @@ ip6_print(register const u_char *bp, register u_int length)
 		case IPPROTO_IPCOMP:
 		    {
 			int enh;
-			advance = ipcomp_print(cp, (const u_char *)ip6, &enh);
+			advance = ipcomp_print(ndo, cp,
+					       (const u_char *)ip6, &enh);
 			if (enh < 0)
 				goto end;
 			nh = enh & 0xff;
@@ -165,22 +172,22 @@ ip6_print(register const u_char *bp, register u_int length)
 #define IPPROTO_PIM	103
 #endif
 		case IPPROTO_PIM:
-			pim_print(cp, len);
+			pim_print(ndo, cp, len);
 			goto end;
 #ifndef IPPROTO_OSPF
 #define IPPROTO_OSPF 89
 #endif
 		case IPPROTO_OSPF:
-			ospf6_print(cp, len);
+			ospf6_print(ndo, cp, len);
 			goto end;
 		case IPPROTO_IPV6:
-			ip6_print(cp, len);
+			ip6_print(ndo, cp, len);
 			goto end;
 #ifndef IPPROTO_IPV4
 #define IPPROTO_IPV4	4
 #endif
 		case IPPROTO_IPV4:
-			ip_print(cp, len);
+			ip_print(ndo, cp, len);
 			goto end;
 		case IPPROTO_NONE:
 			(void)printf("no next header");

@@ -25,7 +25,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-vrrp.c,v 1.5 2001-07-23 22:27:30 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-vrrp.c,v 1.5.2.1 2001-10-01 04:02:57 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -38,6 +38,7 @@ static const char rcsid[] =
 
 #include <netinet/in.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "extract.h"
 #include "addrtoname.h"
@@ -86,7 +87,8 @@ static const struct tok auth2str[] = {
 };
 
 void
-vrrp_print(register const u_char *bp, register u_int len, int ttl)
+vrrp_print(struct netdissect_options *ipdo,
+	   register const u_char *bp, register u_int len, int ttl)
 {
 	int version, type, auth_type;
 	const char *type_s;

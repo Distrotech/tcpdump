@@ -28,7 +28,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-mpls.c,v 1.2 2001-06-26 06:24:57 guy Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-mpls.c,v 1.2.2.1 2001-10-01 04:02:41 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -46,6 +46,7 @@ static const char rcsid[] =
 #include <string.h>
 #include <unistd.h>
 
+#define AVOID_CHURN 1
 #include "addrtoname.h"
 #include "interface.h"
 #include "extract.h"			/* must come after interface.h */
@@ -76,7 +77,8 @@ static const char *mpls_labelname[] = {
  * RFC3032: MPLS label stack encoding
  */
 void
-mpls_print(const u_char *bp, u_int length)
+mpls_print(struct netdissect_options *ndo,
+	   const u_char *bp, u_int length)
 {
 	const u_char *p;
 	u_int32_t v;
@@ -103,11 +105,11 @@ mpls_print(const u_char *bp, u_int length)
 
 	switch (MPLS_LABEL(v)) {
 	case 0:	/* IPv4 explicit NULL label */
-		ip_print(p, length - (p - bp));
+		ip_print(ndo, p, length - (p - bp));
 		break;
 #ifdef INET6
 	case 2:	/* IPv6 explicit NULL label */
-		ip6_print(p, length - (p - bp));
+		ip6_print(ndo, p, length - (p - bp));
 		break;
 #endif
 	default:

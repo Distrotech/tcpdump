@@ -11,7 +11,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-stp.c,v 1.6 2000-09-29 04:58:50 guy Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-stp.c,v 1.6.2.1 2001-10-01 04:02:53 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -28,6 +28,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"
@@ -72,7 +73,8 @@ stp_print_tcn_bpdu(const u_char *p, u_int length)
  * Print 802.1d packets.
  */
 void
-stp_print(const u_char *p, u_int length)
+stp_print(struct netdissect_options *ipdo,
+	  const u_char *p, u_int length)
 {
 	if (length < 7)
 		goto trunc;

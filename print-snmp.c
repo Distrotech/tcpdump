@@ -58,7 +58,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-snmp.c,v 1.50 2001-09-17 22:16:53 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-snmp.c,v 1.50.2.1 2001-10-01 04:02:52 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -76,6 +76,7 @@ static const char rcsid[] =
 #include <smi.h>
 #endif
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -647,7 +648,8 @@ asn1_parse(register const u_char *p, u_int len, struct be *elem)
  * BE form was added.
  */
 static void
-asn1_print(struct be *elem)
+asn1_print(struct netdissect_options *ipdo,
+	   struct be *elem)
 {
 	u_char *p = (u_char *)elem->data.raw;
 	u_int32_t asnlen = elem->asnlen;
@@ -1146,7 +1148,8 @@ static void smi_print_value(SmiNode *smiNode, u_char pduid, struct be *elem)
  * Decode SNMP varBind
  */
 static void
-varbind_print(u_char pduid, const u_char *np, u_int length)
+varbind_print(struct netdissect_options *ipdo,
+	      u_char pduid, const u_char *np, u_int length)
 {
 	struct be elem;
 	int count = 0, ind;
@@ -1159,7 +1162,7 @@ varbind_print(u_char pduid, const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_SEQ) {
 		fputs("[!SEQ of varbind]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo, &elem);
 		return;
 	}
 	if (count < length)
@@ -1179,7 +1182,7 @@ varbind_print(u_char pduid, const u_char *np, u_int length)
 			return;
 		if (elem.type != BE_SEQ) {
 			fputs("[!varbind]", stdout);
-			asn1_print(&elem);
+			asn1_print(ipdo, &elem);
 			return;
 		}
 		vbend = np + count;
@@ -1193,13 +1196,13 @@ varbind_print(u_char pduid, const u_char *np, u_int length)
 			return;
 		if (elem.type != BE_OID) {
 			fputs("[objName!=OID]", stdout);
-			asn1_print(&elem);
+			asn1_print(ipdo,&elem);
 			return;
 		}
 #ifdef LIBSMI
 		smiNode = smi_print_variable(&elem);
 #else
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 #endif
 		length -= count;
 		np += count;
@@ -1215,14 +1218,14 @@ varbind_print(u_char pduid, const u_char *np, u_int length)
 		    || pduid == GETBULKREQ) {
 			if (elem.type != BE_NULL) {
 				fputs("[objVal!=NULL]", stdout);
-				asn1_print(&elem);
+				asn1_print(ipdo,&elem);
 			}
 		} else {
 		        if (elem.type != BE_NULL) {
 #ifdef LIBSMI
 			        smi_print_value(smiNode, pduid, &elem);
 #else
-				asn1_print(&elem);
+				asn1_print(ipdo,&elem);
 #endif
 			}
 		}
@@ -1236,7 +1239,8 @@ varbind_print(u_char pduid, const u_char *np, u_int length)
  * GetBulk, Inform, V2Trap, and Report
  */
 static void
-snmppdu_print(u_char pduid, const u_char *np, u_int length)
+snmppdu_print(struct netdissect_options *ipdo,
+	      u_char pduid, const u_char *np, u_int length)
 {
 	struct be elem;
 	int count = 0, error;
@@ -1246,7 +1250,7 @@ snmppdu_print(u_char pduid, const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[reqId!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo, &elem);
 		return;
 	}
 	if (vflag)
@@ -1259,7 +1263,7 @@ snmppdu_print(u_char pduid, const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[errorStatus!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	error = 0;
@@ -1284,7 +1288,7 @@ snmppdu_print(u_char pduid, const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[errorIndex!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if ((pduid == GETREQ || pduid == GETNEXTREQ || pduid == SETREQ
@@ -1308,7 +1312,7 @@ snmppdu_print(u_char pduid, const u_char *np, u_int length)
 	length -= count;
 	np += count;
 
-	varbind_print(pduid, np, length);
+	varbind_print(ipdo, pduid, np, length);
 	return;
 }
 
@@ -1316,7 +1320,8 @@ snmppdu_print(u_char pduid, const u_char *np, u_int length)
  * Decode SNMP Trap PDU
  */
 static void
-trappdu_print(const u_char *np, u_int length)
+trappdu_print(struct netdissect_options *ipdo,
+	      const u_char *np, u_int length)
 {
 	struct be elem;
 	int count = 0, generic;
@@ -1328,10 +1333,10 @@ trappdu_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_OID) {
 		fputs("[enterprise!=OID]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo, &elem);
 		return;
 	}
-	asn1_print(&elem);
+	asn1_print(ipdo,&elem);
 	length -= count;
 	np += count;
 
@@ -1342,10 +1347,10 @@ trappdu_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INETADDR) {
 		fputs("[agent-addr!=INETADDR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
-	asn1_print(&elem);
+	asn1_print(ipdo,&elem);
 	length -= count;
 	np += count;
 
@@ -1354,7 +1359,7 @@ trappdu_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[generic-trap!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	generic = elem.data.integer;
@@ -1370,7 +1375,7 @@ trappdu_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[specific-trap!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if (generic != GT_ENTERPRISE) {
@@ -1388,14 +1393,14 @@ trappdu_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_UNS) {			/* XXX */
 		fputs("[time-stamp!=TIMETICKS]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
-	asn1_print(&elem);
+	asn1_print(ipdo,&elem);
 	length -= count;
 	np += count;
 
-	varbind_print (TRAP, np, length);
+	varbind_print (ipdo, TRAP, np, length);
 	return;
 }
 
@@ -1403,7 +1408,8 @@ trappdu_print(const u_char *np, u_int length)
  * Decode arbitrary SNMP PDUs.
  */
 static void
-pdu_print(const u_char *np, u_int length, int version)
+pdu_print(struct netdissect_options *ipdo,
+	  const u_char *np, u_int length, int version)
 {
 	struct be pdu;
 	int count = 0;
@@ -1420,7 +1426,7 @@ pdu_print(const u_char *np, u_int length, int version)
 	if (vflag) {
 		fputs("{ ", stdout);
 	}
-	asn1_print(&pdu);
+	asn1_print(ipdo,&pdu);
 	fputs(" ", stdout);
 	/* descend into PDU */
 	length = pdu.asnlen;
@@ -1440,7 +1446,7 @@ pdu_print(const u_char *np, u_int length, int version)
 
 	switch (pdu.id) {
 	case TRAP:
-		trappdu_print(np, length);
+		trappdu_print(ipdo, np, length);
 		break;
 	case GETREQ:
 	case GETNEXTREQ:
@@ -1450,7 +1456,7 @@ pdu_print(const u_char *np, u_int length, int version)
 	case INFORMREQ:
 	case V2TRAP:
 	case REPORT:
-		snmppdu_print(pdu.id, np, length);
+		snmppdu_print(ipdo, pdu.id, np, length);
 		break;
 	}
 
@@ -1463,7 +1469,8 @@ pdu_print(const u_char *np, u_int length, int version)
  * Decode a scoped SNMP PDU.
  */
 static void
-scopedpdu_print(const u_char *np, u_int length, int version)
+scopedpdu_print(struct netdissect_options *ipdo,
+		const u_char *np, u_int length, int version)
 {
 	struct be elem;
 	int i, count = 0;
@@ -1473,7 +1480,7 @@ scopedpdu_print(const u_char *np, u_int length, int version)
 		return;
 	if (elem.type != BE_SEQ) {
 		fputs("[!scoped PDU]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo, &elem);
 		return;
 	}
 	length = elem.asnlen;
@@ -1484,7 +1491,7 @@ scopedpdu_print(const u_char *np, u_int length, int version)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[contextEngineID!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1501,7 +1508,7 @@ scopedpdu_print(const u_char *np, u_int length, int version)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[contextName!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1509,14 +1516,15 @@ scopedpdu_print(const u_char *np, u_int length, int version)
 
 	printf("C=%.*s ", (int)elem.asnlen, elem.data.str);
 
-	pdu_print(np, length, version);
+	pdu_print(ipdo, np, length, version);
 }
 
 /*
  * Decode SNMP Community Header (SNMPv1 and SNMPv2c)
  */
 static void
-community_print(const u_char *np, u_int length, int version)
+community_print(struct netdissect_options *ipdo,
+		const u_char *np, u_int length, int version)
 {
 	struct be elem;
 	int count = 0;
@@ -1526,7 +1534,7 @@ community_print(const u_char *np, u_int length, int version)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[comm!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	/* default community */
@@ -1537,14 +1545,15 @@ community_print(const u_char *np, u_int length, int version)
 	length -= count;
 	np += count;
 
-	pdu_print(np, length, version);
+	pdu_print(ipdo, np, length, version);
 }
 
 /*
  * Decode SNMPv3 User-based Security Message Header (SNMPv3)
  */
 static void
-usm_print(const u_char *np, u_int length)
+usm_print(struct netdissect_options *ipdo,
+	  const u_char *np, u_int length)
 {
         struct be elem;
 	int count = 0;
@@ -1554,7 +1563,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_SEQ) {
 		fputs("[!usm]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length = elem.asnlen;
@@ -1565,7 +1574,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgAuthoritativeEngineID!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1576,7 +1585,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[msgAuthoritativeEngineBoots!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if (vflag) 
@@ -1589,7 +1598,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[msgAuthoritativeEngineTime!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if (vflag) 
@@ -1602,7 +1611,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgUserName!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1615,7 +1624,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgAuthenticationParameters!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1626,7 +1635,7 @@ usm_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgPrivacyParameters!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1640,7 +1649,8 @@ usm_print(const u_char *np, u_int length)
  * Decode SNMPv3 Message Header (SNMPv3)
  */
 static void
-v3msg_print(const u_char *np, u_int length)
+v3msg_print(struct netdissect_options *ipdo,
+	    const u_char *np, u_int length)
 {
 	struct be elem;
 	int count = 0;
@@ -1654,7 +1664,7 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_SEQ) {
 		fputs("[!message]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length = elem.asnlen;
@@ -1669,7 +1679,7 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[msgID!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1680,7 +1690,7 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[msgMaxSize!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
@@ -1691,7 +1701,7 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgFlags!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if (elem.asnlen != 1) {
@@ -1718,7 +1728,7 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[msgSecurityModel!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	model = elem.data.integer;
@@ -1749,14 +1759,14 @@ v3msg_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_STR) {
 		fputs("[msgSecurityParameters!=STR]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	length -= count;
 	np += count;
 
 	if (model == 3) {
-	    usm_print(elem.data.str, elem.asnlen);
+	    usm_print(ipdo, elem.data.str, elem.asnlen);
 	    if (vflag) {
 		fputs("} ", stdout);
 	    }
@@ -1766,7 +1776,7 @@ v3msg_print(const u_char *np, u_int length)
 	    fputs("{ ScopedPDU ", stdout);
 	}
 
-	scopedpdu_print(np, length, 3);
+	scopedpdu_print(ipdo, np, length, 3);
 
 	if (vflag) {
 		fputs("} ", stdout);
@@ -1777,7 +1787,8 @@ v3msg_print(const u_char *np, u_int length)
  * Decode SNMP header and pass on to PDU printing routines
  */
 void
-snmp_print(const u_char *np, u_int length)
+snmp_print(struct netdissect_options *ipdo,
+	   const u_char *np, u_int length)
 {
 	struct be elem;
 	int count = 0;
@@ -1798,7 +1809,7 @@ snmp_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_SEQ) {
 		fputs("[!init SEQ]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 	if (count < length)
@@ -1812,7 +1823,7 @@ snmp_print(const u_char *np, u_int length)
 		return;
 	if (elem.type != BE_INT) {
 		fputs("[version!=INT]", stdout);
-		asn1_print(&elem);
+		asn1_print(ipdo,&elem);
 		return;
 	}
 
@@ -1834,10 +1845,10 @@ snmp_print(const u_char *np, u_int length)
 	switch (version) {
 	case SNMP_VERSION_1:
         case SNMP_VERSION_2:
-		community_print(np, length, version);
+		community_print(ipdo, np, length, version);
 		break;
 	case SNMP_VERSION_3:
-		v3msg_print(np, length);
+		v3msg_print(ipdo, np, length);
 		break;
 	default:
 	        printf("[version = %d]", elem.data.integer);

@@ -20,7 +20,7 @@
  */
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ether.c,v 1.65 2001-07-04 22:03:14 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ether.c,v 1.65.2.1 2001-10-01 04:02:29 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -39,31 +39,30 @@ struct rtentry;
 #include <stdio.h>
 #include <pcap.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "ethertype.h"
 
 #include "ether.h"
 
-const u_char *packetp;
-const u_char *snapend;
-
 static inline void
-ether_print(register const u_char *bp, u_int length)
+ether_print(struct netdissect_options *ipdo,
+	    register const u_char *bp, u_int length)
 {
 	register const struct ether_header *ep;
 
 	ep = (const struct ether_header *)bp;
 	if (qflag)
 		(void)printf("%s %s %d: ",
-			     etheraddr_string(ESRC(ep)),
-			     etheraddr_string(EDST(ep)),
+			     etheraddr_string(ipdo,ESRC(ep)),
+			     etheraddr_string(ipdo,EDST(ep)),
 			     length);
 	else
 		(void)printf("%s %s %s %d: ",
-			     etheraddr_string(ESRC(ep)),
-			     etheraddr_string(EDST(ep)),
-			     etherproto_string(ep->ether_type),
+			     etheraddr_string(ipdo,ESRC(ep)),
+			     etheraddr_string(ipdo,EDST(ep)),
+			     etherproto_string(ipdo,ep->ether_type),
 			     length);
 }
 
@@ -81,9 +80,10 @@ ether_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	struct ether_header *ep;
 	u_short ether_type;
 	u_short extracted_ethertype;
+	struct netdissect_options *ipdo = (struct netdissect_options *)user;
 
 	++infodelay;
-	ts_print(&h->ts);
+	ts_print(ipdo, &h->ts);
 
 	if (caplen < ETHER_HDRLEN) {
 		printf("[|ether]");
@@ -91,7 +91,7 @@ ether_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	}
 
 	if (eflag)
-		ether_print(p, length);
+		ether_print(ipdo, p, length);
 
 	/*
 	 * Some printers want to get back at the ethernet addresses,
@@ -114,28 +114,35 @@ ether_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
 	extracted_ethertype = 0;
 	if (ether_type <= ETHERMTU) {
 		/* Try to print the LLC-layer header & higher layers */
-		if (llc_print(p, length, caplen, ESRC(ep), EDST(ep),
-		    &extracted_ethertype) == 0) {
+		if (llc_print(ipdo, p, length, caplen, ESRC(ep), EDST(ep),
+			      &extracted_ethertype) == 0) {
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				ether_print((u_char *)ep, length + ETHER_HDRLEN);
+				ether_print(ipdo, (u_char *)ep,
+					    length + ETHER_HDRLEN);
 			if (extracted_ethertype) {
 				printf("(LLC %s) ",
-			       etherproto_string(htons(extracted_ethertype)));
+			       etherproto_string(ipdo,
+						 htons(extracted_ethertype)));
 			}
-			if (!xflag && !qflag)
-				default_print(p, caplen);
+			if (!xflag && !qflag) {
+				(*ndo->ndo_default_print)(ndo, p, caplen);
+			}
 		}
-	} else if (ether_encap_print(ether_type, p, length, caplen,
-	    &extracted_ethertype) == 0) {
+	} else if (ether_encap_print(ipdo, ether_type, p, length, caplen,
+				     &extracted_ethertype) == 0) {
 		/* ether_type not known, print raw packet */
-		if (!eflag)
-			ether_print((u_char *)ep, length + ETHER_HDRLEN);
-		if (!xflag && !qflag)
-			default_print(p, caplen);
+		if (!eflag) {
+			ether_print(ipdo, (u_char *)ep,
+				    length + ETHER_HDRLEN);
+		}
+		if (!xflag && !qflag) {
+			(*ndo->ndo_default_print)(ndo, p, caplen);
+		}
 	}
-	if (xflag)
-		default_print(p, caplen);
+	if (xflag) {
+		(*ndo->ndo_default_print)(ndo, p, caplen);
+	}
  out:
 	putchar('\n');
 	--infodelay;
@@ -156,8 +163,10 @@ ether_if_print(u_char *user, const struct pcap_pkthdr *h, const u_char *p)
  */
 
 int
-ether_encap_print(u_short ethertype, const u_char *p,
-    u_int length, u_int caplen, u_short *extracted_ethertype)
+ether_encap_print(struct netdissect_options *ipdo,
+		  u_short ethertype, const u_char *p,
+		  u_int length, u_int caplen,
+		  u_short *extracted_ethertype)
 {
  recurse:
 	*extracted_ethertype = ethertype;
@@ -165,36 +174,36 @@ ether_encap_print(u_short ethertype, const u_char *p,
 	switch (ethertype) {
 
 	case ETHERTYPE_IP:
-		ip_print(p, length);
+		ip_print(ipdo, p, length);
 		return (1);
 
 #ifdef INET6
 	case ETHERTYPE_IPV6:
-		ip6_print(p, length);
+		ip6_print(ipdo, p, length);
 		return (1);
 #endif /*INET6*/
 
 	case ETHERTYPE_ARP:
 	case ETHERTYPE_REVARP:
-		arp_print(p, length, caplen);
+		arp_print(ipdo, p, length, caplen);
 		return (1);
 
 	case ETHERTYPE_DN:
-		decnet_print(p, length, caplen);
+		decnet_print(ipdo, p, length, caplen);
 		return (1);
 
 	case ETHERTYPE_ATALK:
 		if (vflag)
 			fputs("et1 ", stdout);
-		atalk_print(p, length);
+		atalk_print(ipdo, p, length);
 		return (1);
 
 	case ETHERTYPE_AARP:
-		aarp_print(p, length);
+		aarp_print(ipdo, p, length);
 		return (1);
 
 	case ETHERTYPE_IPX:
-		ipx_print(p, length);
+		ipx_print(ipdo, p, length);
 		return (1);
 
 	case ETHERTYPE_8021Q:
@@ -211,36 +220,40 @@ ether_encap_print(u_short ethertype, const u_char *p,
 
 		*extracted_ethertype = 0;
 
-		if (llc_print(p, length, caplen, p - 18, p - 12,
+		if (llc_print(ipdo, p, length, caplen, p - 18, p - 12,
 		    extracted_ethertype) == 0) {
 			/* ether_type not known, print raw packet */
 			if (!eflag)
-				ether_print(p - 18, length + 4);
+				ether_print(ipdo, p - 18, length + 4);
 			if (*extracted_ethertype) {
 				printf("(LLC %s) ",
-			       etherproto_string(htons(*extracted_ethertype)));
+			       etherproto_string(ipdo,
+						 htons(*extracted_ethertype)));
 			}
-			if (!xflag && !qflag)
-				default_print(p - 18, caplen + 4);
+			if (!xflag && !qflag) {
+				(*ndo->ndo_default_print)(ndo,
+							  p - 18,
+							  caplen + 4);
+			}
 		}
 		return (1);
 
 	case ETHERTYPE_PPPOED:
 	case ETHERTYPE_PPPOES:
-		pppoe_print(p, length);
+		pppoe_print(ipdo, p, length);
  		return (1);
  
 	case ETHERTYPE_PPP:
 		printf("ppp");
 		if (length) {
 			printf(": ");
-			ppp_print(p, length);
+			ppp_print(ipdo, p, length);
 		}
 		return (1);
 
 	case ETHERTYPE_MPLS:
 	case ETHERTYPE_MPLS_MULTI:
-		mpls_print(p, length);
+		mpls_print(ndo, p, length);
 		return (1);
 
 	case ETHERTYPE_LAT:

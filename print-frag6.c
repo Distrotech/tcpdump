@@ -21,7 +21,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-frag6.c,v 1.13 2001-09-17 21:58:02 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-frag6.c,v 1.13.2.1 2001-10-01 04:02:29 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -42,11 +42,13 @@ static const char rcsid[] =
 
 #include "ip6.h"
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
 int
-frag6_print(register const u_char *bp, register const u_char *bp2)
+frag6_print(struct netdissect_options *ndo,
+	    register const u_char *bp, register const u_char *bp2)
 {
 	register const struct ip6_frag *dp;
 	register const struct ip6_hdr *ip6;

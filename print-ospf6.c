@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-ospf6.c,v 1.7 2001-05-09 01:08:03 fenner Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-ospf6.c,v 1.7.2.1 2001-10-01 04:02:44 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -40,6 +40,7 @@ static const char rcsid[] =
 #include <stdio.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -90,11 +91,15 @@ static char tstr[] = " [|ospf]";
 /* Forwards */
 static inline void ospf6_print_seqage(u_int32_t, time_t);
 static inline void ospf6_print_bits(const struct bits *, u_char);
-static void ospf6_print_ls_type(u_int, const rtrid_t *,
-    const rtrid_t *, const char *);
-static int ospf6_print_lshdr(const struct lsa_hdr *);
-static int ospf6_print_lsa(const struct lsa *);
-static int ospf6_decode_v3(const struct ospf6hdr *, const u_char *);
+static void ospf6_print_ls_type(struct netdissect_options *ndo,
+				u_int, const rtrid_t *,
+				const rtrid_t *, const char *);
+static int ospf6_print_lshdr(struct netdissect_options *ndo,
+			     const struct lsa_hdr *);
+static int ospf6_print_lsa(struct netdissect_options *ndo,
+			   const struct lsa *);
+static int ospf6_decode_v3(struct netdissect_options *ndo,
+			   const struct ospf6hdr *, const u_char *);
 
 static inline void
 ospf6_print_seqage(register u_int32_t seq, register time_t us)
@@ -128,9 +133,10 @@ ospf6_print_bits(register const struct bits *bp, register u_char options)
 }
 
 static void
-ospf6_print_ls_type(register u_int ls_type,
-    register const rtrid_t *ls_stateid,
-    register const rtrid_t *ls_router, register const char *fmt)
+ospf6_print_ls_type(struct netdissect_options *ndo,
+		    register u_int ls_type,
+		    register const rtrid_t *ls_stateid,
+		    register const rtrid_t *ls_router, register const char *fmt)
 {
 	char *scope;
 
@@ -211,7 +217,8 @@ ospf6_print_ls_type(register u_int ls_type,
 }
 
 static int
-ospf6_print_lshdr(register const struct lsa_hdr *lshp)
+ospf6_print_lshdr(struct netdissect_options *ndo,
+		  register const struct lsa_hdr *lshp)
 {
 
 	TCHECK(lshp->ls_type);
@@ -219,8 +226,8 @@ ospf6_print_lshdr(register const struct lsa_hdr *lshp)
 
 	TCHECK(lshp->ls_seq);
 	ospf6_print_seqage(ntohl(lshp->ls_seq), ntohs(lshp->ls_age));
-	ospf6_print_ls_type(ntohs(lshp->ls_type), &lshp->ls_stateid,
-		&lshp->ls_router, "ls_type %d");
+	ospf6_print_ls_type(ndo, ntohs(lshp->ls_type), &lshp->ls_stateid,
+			    &lshp->ls_router, "ls_type %d");
 
 	return (0);
 trunc:
@@ -228,7 +235,8 @@ trunc:
 }
 
 static int
-ospf6_print_lsaprefix(register const struct lsa_prefix *lsapp)
+ospf6_print_lsaprefix(struct netdissect_options *ndo,
+		      register const struct lsa_prefix *lsapp)
 {
 	int k;
 	struct in6_addr prefix;
@@ -258,7 +266,8 @@ trunc:
  * Print a single link state advertisement.  If truncated return 1, else 0.
  */
 static int
-ospf6_print_lsa(register const struct lsa *lsap)
+ospf6_print_lsa(struct netdissect_options *ndo,
+		register const struct lsa *lsap)
 {
 	register const u_char *ls_end, *ls_opt;
 	register const struct rlalink *rlp;
@@ -278,7 +287,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 	register int j, k;
 	u_int32_t flags32;
 
-	if (ospf6_print_lshdr(&lsap->ls_hdr))
+	if (ospf6_print_lshdr(ndo, &lsap->ls_hdr))
 		return (1);
 	TCHECK(lsap->ls_hdr.ls_length);
 	ls_end = (u_char *)lsap + ntohs(lsap->ls_hdr.ls_length);
@@ -348,7 +357,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 			(u_int32_t)ntohl(lsap->lsa_un.un_inter_ap.inter_ap_metric) & SLA_MASK_METRIC);
 		lsapp = lsap->lsa_un.un_inter_ap.inter_ap_prefix;
 		while (lsapp + sizeof(lsapp) <= (struct lsa_prefix *)ls_end) {
-			k = ospf6_print_lsaprefix(lsapp);
+			k = ospf6_print_lsaprefix(ndo, lsapp);
 			if (k)
 				goto trunc;
 			lsapp = (struct lsa_prefix *)(((u_char *)lsapp) + k);
@@ -362,7 +371,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 		       (u_int32_t)ntohl(lsap->lsa_un.un_asla.asla_metric) &
 		       ASLA_MASK_METRIC);
 		lsapp = lsap->lsa_un.un_asla.asla_prefix;
-		k = ospf6_print_lsaprefix(lsapp);
+		k = ospf6_print_lsaprefix(ndo, lsapp);
 		if (k < 0)
 			goto trunc;
 		if ((ls_opt = (u_char *)(((u_char *)lsapp) + k)) < ls_end) {
@@ -447,7 +456,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 			(u_int32_t)ntohl(llsap->llsa_nprefix));
 		lsapp = llsap->llsa_prefix;
 		for (j = 0; j < ntohl(llsap->llsa_nprefix); j++) {
-			k = ospf6_print_lsaprefix(lsapp);
+			k = ospf6_print_lsaprefix(ndo, lsapp);
 			if (k)
 				goto trunc;
 			lsapp = (struct lsa_prefix *)(((u_char *)lsapp) + k);
@@ -457,7 +466,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 	case LS_TYPE_INTRA_AP | LS_SCOPE_AREA:
 		/* Intra-Area-Prefix LSA */
 		TCHECK(lsap->lsa_un.un_intra_ap.intra_ap_rtid);
-		ospf6_print_ls_type(
+		ospf6_print_ls_type(ndo, 
 			ntohs(lsap->lsa_un.un_intra_ap.intra_ap_lstype),
 			&lsap->lsa_un.un_intra_ap.intra_ap_lsid,
 			&lsap->lsa_un.un_intra_ap.intra_ap_rtid,
@@ -470,7 +479,7 @@ ospf6_print_lsa(register const struct lsa *lsap)
 		for (j = 0;
 		     j < ntohs(lsap->lsa_un.un_intra_ap.intra_ap_nprefix);
 		     j++) {
-			k = ospf6_print_lsaprefix(lsapp);
+			k = ospf6_print_lsaprefix(ndo, lsapp);
 			if (k)
 				goto trunc;
 			lsapp = (struct lsa_prefix *)(((u_char *)lsapp) + k);
@@ -491,8 +500,9 @@ trunc:
 }
 
 static int
-ospf6_decode_v3(register const struct ospf6hdr *op,
-    register const u_char *dataend)
+ospf6_decode_v3(struct netdissect_options *ndo,
+		register const struct ospf6hdr *op,
+		register const u_char *dataend)
 {
 	register const rtrid_t *ap;
 	register const struct lsr *lsrp;
@@ -566,7 +576,7 @@ ospf6_decode_v3(register const struct ospf6hdr *op,
 			/* Print all the LS adv's */
 			lshp = op->ospf6_db.db_lshdr;
 
-			while (!ospf6_print_lshdr(lshp)) {
+			while (!ospf6_print_lshdr(ndo, lshp)) {
 							/* { (ctags) */
 				printf(" }");
 				++lshp;
@@ -580,10 +590,11 @@ ospf6_decode_v3(register const struct ospf6hdr *op,
 			while ((u_char *)lsrp < dataend) {
 				TCHECK(*lsrp);
 				printf(" {");		/* } (ctags) */
-				ospf6_print_ls_type(ntohs(lsrp->ls_type),
-				    &lsrp->ls_stateid,
-				    &lsrp->ls_router,
-				    "LinkStateType %d");
+				ospf6_print_ls_type(ndo,
+						    ntohs(lsrp->ls_type),
+						    &lsrp->ls_stateid,
+						    &lsrp->ls_router,
+						    "LinkStateType %d");
 							/* { (ctags) */
 				printf(" }");
 				++lsrp;
@@ -597,7 +608,7 @@ ospf6_decode_v3(register const struct ospf6hdr *op,
 			TCHECK(op->ospf6_lsu.lsu_count);
 			i = ntohl(op->ospf6_lsu.lsu_count);
 			while (i--) {
-				if (ospf6_print_lsa(lsap))
+				if (ospf6_print_lsa(ndo, lsap))
 					goto trunc;
 				lsap = (struct lsa *)((u_char *)lsap +
 				    ntohs(lsap->ls_hdr.ls_length));
@@ -610,7 +621,7 @@ ospf6_decode_v3(register const struct ospf6hdr *op,
 		if (vflag) {
 			lshp = op->ospf6_lsa.lsa_lshdr;
 
-			while (!ospf6_print_lshdr(lshp)) {
+			while (!ospf6_print_lshdr(ndo, lshp)) {
 							/* { (ctags) */
 				printf(" }");
 				++lshp;
@@ -628,7 +639,8 @@ trunc:
 }
 
 void
-ospf6_print(register const u_char *bp, register u_int length)
+ospf6_print(struct netdissect_options *ndo,
+	    register const u_char *bp, register u_int length)
 {
 	register const struct ospf6hdr *op;
 	register const u_char *dataend;
@@ -669,7 +681,7 @@ ospf6_print(register const u_char *bp, register u_int length)
 
 	case 3:
 		/* ospf version 3 */
-		if (ospf6_decode_v3(op, dataend))
+		if (ospf6_decode_v3(ndo, op, dataend))
 			goto trunc;
 		break;
 

@@ -24,7 +24,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-gre.c,v 1.13 2001-06-15 22:17:31 fenner Exp $";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-gre.c,v 1.13.2.1 2001-10-01 04:02:30 mcr Exp $";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -41,6 +41,7 @@ static const char rcsid[] =
 #include <netdb.h>
 #include <stdio.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 #include "extract.h"		/* must come after interface.h */
@@ -75,7 +76,7 @@ struct gre {
  * Deencapsulate and print a GRE-tunneled IP datagram
  */
 void
-gre_print(const u_char *bp, u_int length)
+gre_print(struct netdissect_options *ipdo, const u_char *bp, u_int length)
 {
 	const u_char *cp = bp + 4;
 	const struct gre *gre;
@@ -165,8 +166,8 @@ gre_print(const u_char *bp, u_int length)
 	TCHECK(cp[0]);
 
 	length -= cp - bp;
-	if (ether_encap_print(proto, cp, length, length,
-	    &extracted_ethertype) == 0)
+	if (ether_encap_print(ipdo, proto, cp, length, length,
+			      &extracted_ethertype) == 0)
  		printf("gre-proto-0x%04X", proto);
 	return;
 

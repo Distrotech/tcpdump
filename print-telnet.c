@@ -51,7 +51,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-     "@(#) $Header: /tcpdump/master/tcpdump/print-telnet.c,v 1.18 2001-09-10 06:40:08 fenner Exp $";
+     "@(#) $Header: /tcpdump/master/tcpdump/print-telnet.c,v 1.18.2.1 2001-10-01 04:02:54 mcr Exp $";
 #endif
 
 #include <sys/param.h>
@@ -66,6 +66,7 @@ static const char rcsid[] =
 #include <unistd.h>
 #include <string.h>
 
+#define AVOID_CHURN 1
 #include "interface.h"
 #include "addrtoname.h"
 
@@ -113,7 +114,8 @@ numstr(int x)
 
 /* sp points to IAC byte */
 static int
-telnet_parse(const u_char *sp, u_int length, int print)
+telnet_parse(struct netdissect_options *ndo,
+	     const u_char *sp, u_int length, int print)
 {
 	int i, c, x;
 	const u_char *osp, *p;
@@ -230,7 +232,8 @@ pktend:
 }
 
 void
-telnet_print(const u_char *sp, u_int length)
+telnet_print(struct netdissect_options *ipdo,
+	     const u_char *sp, u_int length)
 {
 	int first = 1;
 	const u_char *osp;
@@ -239,7 +242,7 @@ telnet_print(const u_char *sp, u_int length)
 	osp = sp;
 	
 	while (length > 0 && *sp == IAC) {
-		l = telnet_parse(sp, length, 0);
+		l = telnet_parse(ndo, sp, length, 0);
 		if (l < 0)
 			break;
 
@@ -249,7 +252,7 @@ telnet_print(const u_char *sp, u_int length)
 		if (Xflag && 2 < vflag) {
 			if (first)
 				printf("\nTelnet:");
-			hex_print_with_offset(sp, l, sp - osp);
+			hex_print_with_offset(ipdo, sp, l, sp - osp);
 			if (l > 8)
 				printf("\n\t\t\t\t");
 			else
@@ -257,7 +260,7 @@ telnet_print(const u_char *sp, u_int length)
 		} else
 			printf("%s", (first) ? " [telnet " : ", ");
 
-		(void)telnet_parse(sp, length, 1);
+		(void)telnet_parse(ndo, sp, length, 1);
 		first = 0;
 
 		sp += l;
