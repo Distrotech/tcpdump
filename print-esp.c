@@ -23,7 +23,7 @@
 
 #ifndef lint
 static const char rcsid[] =
-    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19.2.2 2001-10-15 16:54:11 mcr Exp $ (LBL)";
+    "@(#) $Header: /tcpdump/master/tcpdump/print-esp.c,v 1.19.2.3 2001-10-23 00:48:57 mcr Exp $ (LBL)";
 #endif
 
 #ifdef HAVE_CONFIG_H
@@ -96,11 +96,12 @@ static int hexdigit(char hex)
 	if(hex >= '0' && hex <= '9') {
 		return (hex - '0');
 	} else if(hex >= 'A' && hex <= 'F') {
-		return (hex - 'A');
+		return (hex - 'A' + 10);
 	} else if(hex >= 'a' && hex <= 'f') {
-		return (hex - 'a');
+		return (hex - 'a' + 10);
 	} else {
 		printf("invalid hex digit %c in espsecret\n", hex);
+		return 0;
 	}
 }
 
@@ -108,7 +109,7 @@ static int hex2byte(char *hexstring)
 {
 	int byte;
 
-	byte = hexdigit(hexstring[0]) << 4 +
+	byte = (hexdigit(hexstring[0]) << 4) +
 		hexdigit(hexstring[1]);
 	return byte;
 }
@@ -118,7 +119,6 @@ void esp_print_decodesecret(struct netdissect_options *ndo)
 {
 	char *colon;
 	int   len, i;
-	char  ciphername[32];
 	struct esp_algorithm *xf;
 
 	if(ndo->ndo_espsecret == NULL) {
@@ -158,10 +158,16 @@ void esp_print_decodesecret(struct netdissect_options *ndo)
 		colon+=2;
 		len = strlen(colon) / 2;
 		ndo->ndo_espsecret_key = malloc(len);
+		if(ndo->ndo_espsecret_key == NULL) {
+		  fprintf(stderr, "%s: ran out of memory (%d) to allocate secret key\n",
+			  ndo->ndo_program_name, len);
+		  exit(2);
+		}
 		i = 0;
 		while(colon[0] != '\0' && colon[1]!='\0') {
 			ndo->ndo_espsecret_key[i]=hex2byte(colon);
 			colon+=2;
+			i++;
 		}
 	} else {
 		ndo->ndo_espsecret_key = colon;
@@ -180,17 +186,19 @@ esp_print(struct netdissect_options *ipdo,
 #ifdef INET6
 	struct ip6_hdr *ip6 = NULL;
 #endif
-	enum cipher algo = NONE;
 	int advance;
 	int len;
-	int authlen;
-	int replaysize = 0;
-	char *secret = NULL;
+	char *secret;
 	int ivlen = 0;
 	u_char *ivoff;
+	u_char *p;
 	
 	esp = (struct esp *)bp;
 	spi = (u_int32_t)ntohl(esp->esp_spi);
+	secret = NULL;
+
+	/* keep secret out of a register */
+	p = (u_char *)&secret;
 
 	/* 'ep' points to the end of available data. */
 	ep = snapend;
@@ -254,7 +262,6 @@ esp_print(struct netdissect_options *ipdo,
 	    {
 		u_char iv[8];
 		des_key_schedule schedule;
-		u_char *p;
 
 		switch (ivlen) {
 		case 4:
@@ -291,7 +298,6 @@ esp_print(struct netdissect_options *ipdo,
 #ifdef HAVE_LIBCRYPTO
 	    {
 		BF_KEY schedule;
-		u_char *p;
 
 		BF_set_key(&schedule, strlen(secret), secret);
 
@@ -309,7 +315,6 @@ esp_print(struct netdissect_options *ipdo,
 #if defined(HAVE_LIBCRYPTO) && defined(HAVE_RC5_H)
 	    {
 		RC5_32_KEY schedule;
-		u_char *p;
 
 		RC5_32_set_key(&schedule, strlen(secret), secret,
 			RC5_16_ROUNDS);
@@ -328,7 +333,6 @@ esp_print(struct netdissect_options *ipdo,
 #if defined(HAVE_LIBCRYPTO) && defined(HAVE_CAST_H) && !defined(HAVE_BUGGY_CAST128)
 	    {
 		CAST_KEY schedule;
-		u_char *p;
 
 		CAST_set_key(&schedule, strlen(secret), secret);
 
@@ -346,9 +350,11 @@ esp_print(struct netdissect_options *ipdo,
 #if defined(HAVE_LIBCRYPTO)
 	    {
 		des_key_schedule s1, s2, s3;
-		u_char *p;
 
 		des_check_key = 1;
+		des_set_odd_parity((void *)secret);
+		des_set_odd_parity((void *)secret+8);
+		des_set_odd_parity((void *)secret+16);
 		if(des_set_key((void *)secret, s1) != 0) {
 		  printf("failed to schedule key 1\n");
 		}
