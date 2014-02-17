@@ -1,0 +1,11 @@
+*~
+*.orig
+*.rej
+tests/DIFF
+tests/NEW
+tests/.failed
+tests/.passed
+config.log
+config.status
+Makefile
+*.o
