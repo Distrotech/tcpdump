@@ -368,7 +368,9 @@ show_dlts_and_exit(pcap_t *pd)
 
 #if !defined(WIN32) && !defined(ANDROID)
 int initgroups(const char *user, gid_t group) {return 0;}
+#endif
 
+#if !defined(WIN32)
 /* Drop root privileges and chroot if necessary */
 static void
 droproot(const char *username, const char *chroot_dir)
@@ -405,7 +407,7 @@ droproot(const char *username, const char *chroot_dir)
 		exit(1);
 	}
 }
-#endif /* !WIN32 && !ANDROID */
+#endif /* !WIN32 */
 
 static int
 getWflagChars(int x)

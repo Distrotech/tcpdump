@@ -113,23 +113,18 @@ LOCAL_SRC_FILES:=\
 	setsignal.c\
 	tcpdump.c\
 	util.c\
-<<<<<<< HEAD
-	version.c\
-=======
 	version.c config.h \
->>>>>>> android-tcpdump-3.9.8
 	print-smb.c\
 	smbutil.c\
 	missing/strlcat.c\
 	missing/strlcpy.c
 
-<<<<<<< HEAD
-config.h:
-	cp Android/config.h config.h
-=======
-${LOCAL_PATH}/config.h:
+${LOCAL_PATH}/config.h: ${LOCAL_PATH}/Android/config.h
 	cp $(LOCAL_PATH)/Android/config.h $(LOCAL_PATH)/config.h
->>>>>>> android-tcpdump-3.9.8
+
+${LOCAL_PATH}/version.c: ${LOCAL_PATH}/VERSION
+	sed -e 's/.*/char version[] = "&";/' $(LOCAL_PATH)/VERSION > $@
+
 
 LOCAL_CFLAGS:=-O2 -g -DANDROID
 LOCAL_CFLAGS+=-DHAVE_CONFIG_H -D_U_="__attribute__((unused))"

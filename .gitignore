@@ -9,3 +9,6 @@ config.log
 config.status
 Makefile
 *.o
+config.h
+version.c
+version.c

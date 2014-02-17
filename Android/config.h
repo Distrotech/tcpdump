@@ -63,17 +63,10 @@
 /* #undef USE_GETIPNODEBY */
 
 /* define if you have ether_ntohost() and it works */
-<<<<<<< HEAD
 /* #undef USE_ETHER_NTOHOST */
 
 /* define if libpcap has pcap_version */
-/* #undef HAVE_PCAP_VERSION */
-=======
-#define USE_ETHER_NTOHOST 1
-
-/* define if libpcap has pcap_version */
 #define HAVE_PCAP_VERSION 1
->>>>>>> android-tcpdump-3.9.8
 
 /* define if libpcap has pcap_debug */
 /* #undef HAVE_PCAP_DEBUG */
@@ -82,7 +75,6 @@
 /* #undef HAVE_YYDEBUG */
 
 /* define if libpcap has pcap_list_datalinks() */
-<<<<<<< HEAD
 #define HAVE_PCAP_LIST_DATALINKS 1
 
 /* define if libpcap has pcap_set_datalink() */
@@ -102,30 +94,9 @@
 
 /* define if unaligned memory accesses fail */
 #define LBL_ALIGN 1
-=======
-/* #undef HAVE_PCAP_LIST_DATALINKS */
-
-/* define if libpcap has pcap_set_datalink() */
-/* #undef HAVE_PCAP_SET_DATALINK */
-
-/* define if libpcap has pcap_datalink_name_to_val() */
-/* #undef HAVE_PCAP_DATALINK_NAME_TO_VAL */
-
-/* define if libpcap has pcap_datalink_val_to_description() */
-/* #undef HAVE_PCAP_DATALINK_VAL_TO_DESCRIPTION */
-
-/* define if libpcap has pcap_dump_ftell() */
-/* #undef HAVE_PCAP_DUMP_FTELL */
-
-/* define if you have getrpcbynumber() */
-#define HAVE_GETRPCBYNUMBER 1
-
-/* define if unaligned memory accesses fail */
-/* #undef LBL_ALIGN */
->>>>>>> android-tcpdump-3.9.8
 
 /* The successful return value from signal (?)XXX */
-#define RETSIGVAL 
+#define RETSIGVAL
 
 /* Define this on IRIX */
 /* #undef _BSD_SIGNALS */
@@ -182,27 +153,16 @@
 #define HAVE_FCNTL_H 1
 
 /* Define to 1 if you have the `getaddrinfo' function. */
-<<<<<<< HEAD
 /* #undef HAVE_GETADDRINFO */
 
 /* Define to 1 if you have the `getnameinfo' function. */
 /* #undef HAVE_GETNAMEINFO */
-=======
-#define HAVE_GETADDRINFO 1
-
-/* Define to 1 if you have the `getnameinfo' function. */
-#define HAVE_GETNAMEINFO 1
->>>>>>> android-tcpdump-3.9.8
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
-<<<<<<< HEAD
 #define HAVE_LIBCRYPTO 1
-=======
-/* #undef HAVE_LIBCRYPTO */
->>>>>>> android-tcpdump-3.9.8
 
 /* Define to 1 if you have the `rpc' library (-lrpc). */
 /* #undef HAVE_LIBRPC */
@@ -226,7 +186,6 @@
 /* #undef HAVE_NET_PFVAR_H */
 
 /* Define to 1 if you have the <openssl/evp.h> header file. */
-<<<<<<< HEAD
 #define HAVE_OPENSSL_EVP_H 1
 
 /* Define to 1 if you have the `pcap_breakloop' function. */
@@ -243,24 +202,6 @@
 
 /* Define to 1 if you have the `pcap_lib_version' function. */
 #define HAVE_PCAP_LIB_VERSION 1
-=======
-/* #undef HAVE_OPENSSL_EVP_H */
-
-/* Define to 1 if you have the `pcap_breakloop' function. */
-/* #undef HAVE_PCAP_BREAKLOOP */
-
-/* Define to 1 if you have the `pcap_dump_flush' function. */
-/* #undef HAVE_PCAP_DUMP_FLUSH */
-
-/* Define to 1 if you have the `pcap_findalldevs' function. */
-/* #undef HAVE_PCAP_FINDALLDEVS */
-
-/* Define to 1 if the system has the type `pcap_if_t'. */
-/* #undef HAVE_PCAP_IF_T */
-
-/* Define to 1 if you have the `pcap_lib_version' function. */
-/* #undef HAVE_PCAP_LIB_VERSION */
->>>>>>> android-tcpdump-3.9.8
 
 /* Define to 1 if you have the `pfopen' function. */
 /* #undef HAVE_PFOPEN */
@@ -317,11 +258,7 @@
 /* #undef HAVE_STRUCT_ETHER_ADDR */
 
 /* Define to 1 if you have the <sys/bitypes.h> header file. */
-<<<<<<< HEAD
 /* #undef HAVE_SYS_BITYPES_H */
-=======
-#define HAVE_SYS_BITYPES_H 1
->>>>>>> android-tcpdump-3.9.8
 
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
@@ -342,17 +279,10 @@
 #define HAVE___ATTRIBUTE__ 1
 
 /* Define to 1 if netinet/ether.h declares `ether_ntohost' */
-<<<<<<< HEAD
 /* #undef NETINET_ETHER_H_DECLARES_ETHER_NTOHOST */
 
 /* Define to 1 if netinet/if_ether.h declares `ether_ntohost' */
 /* #define NETINET_IF_ETHER_H_DECLARES_ETHER_NTOHOST */
-=======
-#define NETINET_ETHER_H_DECLARES_ETHER_NTOHOST 
-
-/* Define to 1 if netinet/if_ether.h declares `ether_ntohost' */
-/* #undef NETINET_IF_ETHER_H_DECLARES_ETHER_NTOHOST */
->>>>>>> android-tcpdump-3.9.8
 
 /* Define to the address where bug reports for this package should be sent. */
 #define PACKAGE_BUGREPORT ""
@@ -379,11 +309,7 @@
 #define SIZEOF_INT 4
 
 /* The size of `long', as computed by sizeof. */
-<<<<<<< HEAD
 #define SIZEOF_LONG 4
-=======
-#define SIZEOF_LONG 8
->>>>>>> android-tcpdump-3.9.8
 
 /* The size of `long long', as computed by sizeof. */
 #define SIZEOF_LONG_LONG 8
