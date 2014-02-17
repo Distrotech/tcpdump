@@ -113,11 +113,14 @@ LOCAL_SRC_FILES:=\
 	setsignal.c\
 	tcpdump.c\
 	util.c\
-	version.c\
+	version.c config.h \
 	print-smb.c\
 	smbutil.c\
 	missing/strlcat.c\
 	missing/strlcpy.c
+
+${LOCAL_PATH}/config.h:
+	cp $(LOCAL_PATH)/Android/config.h $(LOCAL_PATH)/config.h
 
 LOCAL_CFLAGS:=-O2 -g -DANDROID
 LOCAL_CFLAGS+=-DHAVE_CONFIG_H -D_U_="__attribute__((unused))"
