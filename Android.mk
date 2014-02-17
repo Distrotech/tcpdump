@@ -119,6 +119,9 @@ LOCAL_SRC_FILES:=\
 	missing/strlcat.c\
 	missing/strlcpy.c
 
+config.h:
+	cp Android/config.h config.h
+
 LOCAL_CFLAGS:=-O2 -g -DANDROID
 LOCAL_CFLAGS+=-DHAVE_CONFIG_H -D_U_="__attribute__((unused))"
 
