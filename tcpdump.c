@@ -366,7 +366,9 @@ show_dlts_and_exit(pcap_t *pd)
 #define U_FLAG
 #endif
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(ANDROID)
+int initgroups(const char *user, gid_t group) {return 0;}
+
 /* Drop root privileges and chroot if necessary */
 static void
 droproot(const char *username, const char *chroot_dir)
@@ -403,7 +405,7 @@ droproot(const char *username, const char *chroot_dir)
 		exit(1);
 	}
 }
-#endif /* WIN32 */
+#endif /* !WIN32 && !ANDROID */
 
 static int
 getWflagChars(int x)
@@ -1458,4 +1460,3 @@ ndo_warning(netdissect_options *ndo _U_, const char *fmt, ...)
 			(void)fputc('\n', stderr);
 	}
 }
-

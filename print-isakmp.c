@@ -715,15 +715,17 @@ isakmp_id_print(const struct isakmp_gen *ext, u_int item_len _U_,
 		safememcpy(&id, ext, sizeof(id));
 		printf(" idtype=%s", STR_OR_ID(id.type, ipsecidtypestr));
 		if (id.proto_id) {
-#ifndef WIN32
+#if !defined(WIN32) && !defined(ANDROID)
+                        // not supported on android or Win32
 			setprotoent(1);
-#endif /* WIN32 */
+#endif /* !WIN32 && !ANDROID */
 			pe = getprotobynumber(id.proto_id);
 			if (pe)
 				printf(" protoid=%s", pe->p_name);
-#ifndef WIN32
-			endprotoent();
-#endif /* WIN32 */
+#if !defined(WIN32) && !defined(ANDROID)
+                        // not supported on android
+			//endprotoent();
+#endif /* !WIN32 && !ANDROID */
 		} else {
 			/* it DOES NOT mean IPPROTO_IP! */
 			printf(" protoid=%s", "0");
@@ -1443,7 +1445,3 @@ trunc:
  * c-basic-offset: 8
  * End:
  */
-
-
-  
-
