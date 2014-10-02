@@ -138,6 +138,7 @@ struct bgp_route_refresh {
 #define BGPTYPE_AS4_PATH	        17      /* RFC4893 */
 #define BGPTYPE_AGGREGATOR4		18      /* RFC4893 */
 #define BGPTYPE_PMSI_TUNNEL             22      /* draft-ietf-l3vpn-2547bis-mcast-bgp-02.txt */
+#define BGPTYPE_AIGP                    26      /* RFC7311 */
 #define BGPTYPE_ATTR_SET               128      /* draft-marques-ppvpn-ibgp */
 
 #define BGP_MP_NLRI_MINSIZE              3       /* End of RIB Marker detection */
@@ -162,6 +163,7 @@ static const struct tok bgp_attr_values[] = {
     { BGPTYPE_MP_UNREACH_NLRI,  "Multi-Protocol Unreach NLRI"},
     { BGPTYPE_EXTD_COMMUNITIES, "Extended Community"},
     { BGPTYPE_PMSI_TUNNEL,      "PMSI Tunnel"},
+    { BGPTYPE_AIGP,             "Accumulated IGP Metric"},
     { BGPTYPE_ATTR_SET,         "Attribute Set"},
     { 255,                      "Reserved for development"},
     { 0, NULL}
@@ -321,6 +323,13 @@ static const struct tok bgp_pmsi_tunnel_values[] = {
 
 static const struct tok bgp_pmsi_flag_values[] = {
     { 0x01, "Leaf Information required"},
+    { 0, NULL}
+};
+
+#define BGP_AIGP_TLV 1 
+
+static const struct tok bgp_aigp_values[] = {
+    { BGP_AIGP_TLV, "AIGP"},
     { 0, NULL}
 };
 
@@ -2136,6 +2145,54 @@ bgp_attr_print(u_int atype, const u_char *pptr, u_int len)
                 }
                 break;
         }
+	case BGPTYPE_AIGP:
+	{
+	        u_int8_t type;
+		u_int16_t length;
+
+                TCHECK2(tptr[0], 3);
+
+		tlen = len;
+
+		while (tlen >= 3) {
+
+		    type = *tptr;
+		    length = EXTRACT_16BITS(tptr+1);
+
+		    printf("\n\t    %s TLV (%u), length %u",
+			   tok2str(bgp_aigp_values, "Unknown", type),
+			   type, length);
+
+
+		    /*
+		     * Check if we can read the TLV data.
+		     */
+		    TCHECK2(tptr[3], length - 3);
+
+		    switch (type) {
+
+		    case BGP_AIGP_TLV:
+			printf(", metric %" PRIu64, EXTRACT_64BITS(tptr+3));
+			break;
+
+		    default:
+			if (vflag <= 1) {
+			    print_unknown_data(tptr+3,"\n\t      ", length-3);
+			}
+		    }
+
+		    /*
+		     * Header length includes TLV overhead.
+		     */
+		    if (length < 3) {
+			break;
+		    }
+
+		    tptr += length;
+		    tlen -= length;
+		}
+		break;
+	}
         case BGPTYPE_ATTR_SET:
                 TCHECK2(tptr[0], 4);
                 if (len < 4)
