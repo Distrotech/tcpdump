@@ -1948,7 +1948,8 @@ print_packet(u_char *user, const struct pcap_pkthdr *h, const u_char *sp)
 	/*
 	 * Some printers want to check that they're not walking off the
 	 * end of the packet.
-	 * Rather than pass it all the way down, we set this global.
+	 * Rather than pass it all the way down, we set this member
+	 * of the netdissect_options structure.
 	 */
 	snapend = sp + h->caplen;
 
